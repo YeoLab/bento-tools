@@ -70,7 +70,7 @@ def prep(
                 coordinates={"x": "x", "y": "y"},
                 feature_key=feature_key,
                 instance_key=instance_key,
-                transform=xy_scale,
+                transformations={"global": xy_scale},
             )
 
     # sindex points and sjoin shapes if they have not been indexed or joined
