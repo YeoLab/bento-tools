@@ -16,4 +16,3 @@ Cite [our paper](https://doi.org/10.1101/2022.06.10.495510) if you use Bento in 
 ---
 [![GitHub license](https://img.shields.io/github/license/ckmah/bento-tools.svg)](https://github.com/ckmah/bento-tools/blob/master/LICENSE)
 
-testing123
