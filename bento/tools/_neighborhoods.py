@@ -1,3 +1,4 @@
+from typing import Optional, Union, List
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
@@ -5,29 +6,45 @@ from sklearn.neighbors import NearestNeighbors
 
 
 def _count_neighbors(
-    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg="feature_name"
-):
-    """Build nearest neighbor index for points.
+    points: pd.DataFrame,
+    n_genes: int,
+    query_points: Optional[pd.DataFrame] = None,
+    n_neighbors: Optional[int] = None,
+    radius: Optional[float] = None,
+    agg: Optional[str] = "feature_name"
+) -> Union[pd.DataFrame, csr_matrix]:
+    """Build nearest neighbor index and count neighbors for points.
 
     Parameters
     ----------
     points : pd.DataFrame
-        Points dataframe. Must have columns "x", "y", and "gene".
+        Points dataframe containing columns "x", "y", and "feature_name"
     n_genes : int
-        Number of genes in overall dataset. Used to initialize unique gene counts.
+        Total number of unique genes in dataset
     query_points : pd.DataFrame, optional
-        Points to query. If None, use points_df. Default None.
-    n_neighbors : int
-        Number of nearest neighbors to consider per gene.
-    agg : "gene", "binary", None
-        Whether to aggregate nearest neighbors counts. "Gene" aggregates counts by gene, whereas "binary" counts neighbors only once per point. If None, return neighbor counts for each point.
-         Default "gene".
+        Points to query. If None, uses points dataframe
+    n_neighbors : int, optional
+        Number of nearest neighbors to find per point
+    radius : float, optional
+        Radius within which to find neighbors
+    agg : str, optional
+        How to aggregate neighbor counts:
+        - "feature_name": aggregate by gene
+        - "binary": count neighbors once per point
+        - None: return raw neighbor counts per point
+
     Returns
     -------
-    DataFrame or dict of dicts
-        If agg is True, returns a DataFrame with columns "gene", "neighbor", and "count".
-        If agg is False, returns a list of dicts, one for each point. Dict keys are gene names, values are counts.
+    Union[pd.DataFrame, csr_matrix]
+        If agg="feature_name":
+            DataFrame with columns ["feature_name", "neighbor", "count"]
+        If agg="binary" or None:
+            Sparse matrix of shape (n_points, n_genes) containing neighbor counts
 
+    Raises
+    ------
+    ValueError
+        If neither n_neighbors nor radius is specified, or if both are specified
     """
     if n_neighbors and radius:
         raise ValueError("Only specify one of n_neighbors or radius, not both.")

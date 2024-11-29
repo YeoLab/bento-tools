@@ -1,4 +1,4 @@
-from typing import Iterable, Literal, Optional, Union
+from typing import Iterable, Literal, Optional, Union, List
 
 import dask
 import dask.delayed

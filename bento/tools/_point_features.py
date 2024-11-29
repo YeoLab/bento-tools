@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 import re
 from abc import ABCMeta, abstractmethod
 from math import isnan
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Type, Dict
 
 import numpy as np
 import pandas as pd
@@ -25,39 +25,50 @@ from .._utils import get_points
 
 def analyze_points(
     sdata: SpatialData,
-    shape_keys: List[str],
-    feature_names: List[str],
+    shape_keys: Union[str, List[str]],
+    feature_names: Union[str, List[str]],
     points_key: str = "transcripts",
     instance_key: str = "cell_boundaries",
     groupby: Optional[Union[str, List[str]]] = None,
-    recompute=False,
-    progress=False,
+    recompute: bool = False,
+    progress: bool = False,
     num_workers: int = 1,
-):
-    """Calculate features for each point group. Groups are always within each cell.
+) -> None:
+    """Calculate features for point groups within cells.
 
-    When creating the points_df, it first grabs sdata.points[points_key] and joins shape polygons from sdata.shapes[shape_keys].
-    The second join is to sdata.shapes[instance_key] to pull in cell polygons and cell features.
-    The shape indices in the points object are renamed to have _index as a suffix to avoid conflicts.
-    The joined polygons are named with it's respective shape_key.
+    Efficiently avoids recomputing cell-level features by compiling and computing
+    once the set of required cell-level features and attributes for each feature.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatially formatted SpatialData
+        Input SpatialData object
     shape_keys : str or list of str
-        Names of the shapes to analyze.
+        Names of shapes to analyze in sdata.shapes
     feature_names : str or list of str
-        Names of the features to analyze.
+        Names of features to compute; list available features with `bt.tl.list_point_features()`
+    points_key : str, default "transcripts"
+        Key for points in sdata.points
+    instance_key : str, default "cell_boundaries"
+        Key for cell boundaries in sdata.shapes
     groupby : str or list of str, optional
-        Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately.
+        Column(s) in sdata.points[points_key] to group by
+    recompute : bool, default False
+        Whether to force recomputation of features
+    progress : bool, default False
+        Whether to show progress bars
+    num_workers : int, default 1
+        Number of parallel workers
 
     Returns
     -------
-    sdata : spatialdata.SpatialData
-        table.uns["{instance_key}_{groupby}_features"]
-            See the output of each :class:`PointFeature` in `features` for keys added.
+    None
+        Updates sdata.tables["table"].uns["{instance_key}_{groupby}_features"] with computed features
 
+    Raises
+    ------
+    KeyError
+        If required shape keys or groupby columns are not found
     """
 
     # Cast to list if not already
@@ -194,60 +205,76 @@ def analyze_points(
 
 
 class PointFeature(metaclass=ABCMeta):
-    """Abstract class for calculating sample features. A sample is defined as the set of
-    molecules corresponding to a single cell-gene pair.
+    """Base class for point feature calculations.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str, optional
+        Key for shape to analyze relative to
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features.
-    attributes : int
-        Names (keys) used to store computed cell-level features.
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: Optional[str] = None):
         self.cell_features = set()
         self.attributes = set()
         self.instance_key = instance_key
-
+        
         if shape_key:
             self.attributes.add(shape_key)
             self.shape_key = shape_key
 
     @abstractmethod
-    def extract(self, df):
-        """Calculates this feature for a given sample.
+    def extract(self, df: pd.DataFrame) -> Dict[str, float]:
+        """Calculate features for a group of points.
 
         Parameters
         ----------
-        df : DataFrame
-            Assumes each row is a molecule and that columns `x`, `y`, `cell`, and `gene` are present.
+        df : pd.DataFrame
+            Points data with required columns
+
+        Returns
+        -------
+        Dict[str, float]
+            Computed feature values
         """
-        return df
+        return df.to_dict("list")
 
 
 class ShapeProximity(PointFeature):
-    """For a set of points, computes the proximity of points within `shape_key`
-    as well as the proximity of points outside `shape_key`. Proximity is defined as
-    the average absolute distance to the specified `shape_key` normalized by cell
-    radius. Values closer to 0 denote farther from the `shape_key`, values closer
-    to 1 denote closer to the `shape_key`.
+    """Compute proximity of points relative to a shape boundary.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str
+        Key for shape to analyze relative to
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"{shape_key}_inner_proximity"`: proximity of points inside `shape_key`
-        `"{shape_key}_outer_proximity"`: proximity of points outside `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_inner_proximity: Proximity of points inside shape (0-1)
+        - {shape_key}_outer_proximity: Proximity of points outside shape (0-1)
+        Values closer to 0 indicate farther from boundary, closer to 1 indicate nearer
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
         self.cell_features.add("radius")
         self.attributes.add(f"{self.instance_key}_radius")
@@ -311,29 +338,33 @@ class ShapeProximity(PointFeature):
 
 
 class ShapeAsymmetry(PointFeature):
-    """For a set of points, computes the asymmetry of points within `shape_key`
-    as well as the asymmetry of points outside `shape_key`. Asymmetry is defined as
-    the offset between the centroid of points to the centroid of the specified
-    `shape_key`, normalized by cell radius. Values closer to 0 denote symmetry,
-    values closer to 1 denote asymmetry.
+    """Compute asymmetry of points relative to a shape centroid.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str
+        Key for shape to analyze relative to
+
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
-        Names (keys) used to store computed cell-level features
-    shape_key : str
-        Name of shape to use, must be column name in input DataFrame
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"{shape_key}_inner_asymmetry"`: asymmetry of points inside `shape_key`
-        `"{shape_key}_outer_asymmetry"`: asymmetry of points outside `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_inner_asymmetry: Asymmetry of points inside shape (0-1)
+        - {shape_key}_outer_asymmetry: Asymmetry of points outside shape (0-1)
+        Values closer to 0 indicate symmetry, closer to 1 indicate asymmetry
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
         self.cell_features.add("radius")
         self.attributes.add(f"{self.instance_key}_radius")
@@ -397,24 +428,31 @@ class ShapeAsymmetry(PointFeature):
 
 
 class PointDispersionNorm(PointFeature):
-    """For a set of points, calculates the second moment of all points in a cell
-    relative to the centroid of the total RNA signal. This value is normalized by
-    the second moment of a uniform distribution within the cell boundary.
+    """Compute normalized dispersion of points relative to RNA signal centroid.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str
+        Key for shape to analyze relative to
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
-        Names (keys) used to store computed cell-level features
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"point_dispersion"`: measure of point dispersion
+    Dict[str, float]
+        Dictionary containing:
+        - point_dispersion_norm: Second moment of points normalized by 
+          second moment of uniform distribution
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
         self.cell_features.add("raster")
         self.attributes.add(f"{self.instance_key}_raster")
@@ -441,26 +479,32 @@ class PointDispersionNorm(PointFeature):
 
 
 class ShapeDispersionNorm(PointFeature):
-    """For a set of points, calculates the second moment of all points in a cell relative to the
-    centroid of `shape_key`. This value is normalized by the second moment of a uniform
-    distribution within the cell boundary.
+    """Compute normalized dispersion of points relative to a shape centroid.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str
+        Key for shape to analyze relative to
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
-        Names (keys) used to store computed cell-level features
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"{shape_key}_dispersion"`: measure of point dispersion relative to `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_dispersion_norm: Second moment of points normalized by
+          second moment of uniform distribution
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
-
         self.cell_features.add("raster")
         self.attributes.add(f"{self.instance_key}_raster")
 
@@ -494,25 +538,24 @@ class ShapeDispersionNorm(PointFeature):
 
 
 class ShapeDistance(PointFeature):
-    """For a set of points, computes the distance of points within `shape_key`
-    as well as the distance of points outside `shape_key`.
+    """Compute absolute distances between points and a shape boundary.
 
-    Attributes
+    Parameters
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str
+        Key for shape to analyze relative to
 
     Returns
     -------
-    dict
-        `"{shape_key}_inner_distance"`: distance of points inside `shape_key`
-        `"{shape_key}_outer_distance"`: distance of points outside `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_inner_distance: Mean distance of points inside shape to boundary
+        - {shape_key}_outer_distance: Mean distance of points outside shape to boundary
     """
 
-    # Cell-level features needed for computing sample-level features
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
 
     def extract(self, df):
@@ -564,28 +607,24 @@ class ShapeDistance(PointFeature):
 
 
 class ShapeOffset(PointFeature):
-    """For a set of points, computes the offset of points within `shape_key`
-    as well as the offset of points outside `shape_key`. Offset is defined as
-    the offset between the centroid of points to the centroid of the specified
-    `shape_key`.
+    """Compute distances between point centroids and a shape centroid.
 
-    Attributes
+    Parameters
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
     shape_key : str
-        Name of shape to use, must be column name in input DataFrame
+        Key for shape to analyze relative to
 
     Returns
     -------
-    dict
-        `"{shape_key}_inner_offset"`: offset of points inside `shape_key`
-        `"{shape_key}_outer_offset"`: offset of points outside `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_inner_offset: Mean distance from inner points to shape centroid
+        - {shape_key}_outer_offset: Mean distance from outer points to shape centroid
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
 
     def extract(self, df):
@@ -637,24 +676,30 @@ class ShapeOffset(PointFeature):
 
 
 class PointDispersion(PointFeature):
-    """For a set of points, calculates the second moment of all points in a cell
-    relative to the centroid of the total RNA signal.
+    """Compute second moment of points relative to RNA signal centroid.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : Optional[str]
+        Not used, included for API consistency
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"point_dispersion"`: measure of point dispersion
+    Dict[str, float]
+        Dictionary containing:
+        - point_dispersion: Second moment of points relative to RNA centroid
     """
 
-    # shape_key set to None to follow the same convention as other shape features
-    def __init__(self, instance_key, shape_key=None):
+    def __init__(self, instance_key: str, shape_key: Optional[str] = None):
         super().__init__(instance_key, shape_key)
 
     def extract(self, df):
@@ -670,23 +715,30 @@ class PointDispersion(PointFeature):
 
 
 class ShapeDispersion(PointFeature):
-    """For a set of points, calculates the second moment of all points in a cell relative to the
-    centroid of `shape_key`.
+    """Compute second moment of points relative to a shape centroid.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : str
+        Key for shape to analyze relative to
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"{shape_key}_dispersion"`: measure of point dispersion relative to `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_dispersion: Second moment of points relative to shape centroid
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
 
     def extract(self, df):
@@ -712,41 +764,41 @@ class ShapeDispersion(PointFeature):
 
 
 class RipleyStats(PointFeature):
-    """For a set of points, calculates properties of the L-function. The L-function
-    measures spatial clustering of a point pattern over the area of the cell.
+    """Compute Ripley's L-function statistics for point patterns.
+
+    The L-function is evaluated at r=[1,d], where d is half the cell's maximum diameter.
+
+    Parameters
+    ----------
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
+    shape_key : Optional[str]
+        Not used, included for API consistency
 
     Attributes
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    cell_features : set
+        Required cell-level features
+    attributes : set
+        Required shape attributes
 
     Returns
     -------
-    dict
-        `"l_max": The max value of the L-function evaluated at r=[1,d], where d is half the cell’s maximum diameter.
-        `"l_max_gradient"`: The max value of the gradient of the above L-function.
-        `"l_min_gradient"`: The min value of the gradient of the above L-function.
-        `"l_monotony"`: The correlation of the L-function and r=[1,d].
-        `"l_half_radius"`: The value of the L-function evaluated at 1/4 of the maximum cell diameter.
-
+    Dict[str, float]
+        Dictionary containing:
+        - l_max: Maximum value of L-function 
+        - l_max_gradient: Maximum gradient of L-function
+        - l_min_gradient: Minimum gradient of L-function
+        - l_monotony: Spearman correlation between L-function and radius
+        - l_half_radius: L-function value at quarter cell diameter
     """
 
-    def __init__(self, instance_key, shape_key=None):
+    def __init__(self, instance_key: str, shape_key: Optional[str] = None):
         super().__init__(instance_key, shape_key)
         self.cell_features.update(["span", "bounds", "area"])
-
-        self.attributes.update(
-            [
-                f"{instance_key}_span",
-                f"{instance_key}_minx",
-                f"{instance_key}_miny",
-                f"{instance_key}_maxx",
-                f"{instance_key}_maxy",
-                f"{instance_key}_area",
-            ]
-        )
+        self.attributes.update([f"{instance_key}_span", f"{instance_key}_minx", 
+                              f"{instance_key}_miny", f"{instance_key}_maxx",
+                              f"{instance_key}_maxy", f"{instance_key}_area"])
 
     def extract(self, df):
         df = super().extract(df)
@@ -812,25 +864,23 @@ class RipleyStats(PointFeature):
 
 
 class ShapeEnrichment(PointFeature):
-    """For a set of points, calculates the fraction of points within `shape_key`
-    out of all points in the cell.
+    """Compute fraction of points within a shape boundary.
 
-    Attributes
+    Parameters
     ----------
-    cell_features : int
-        Set of cell-level features needed for computing sample-level features
-    attributes : int
-        Names (keys) used to store computed cell-level features
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
     shape_key : str
-        Name of shape to use, must be column name in input DataFrame
+        Key for shape to analyze relative to
 
     Returns
     -------
-    dict
-        `"{shape_key}_enrichment"`: enrichment fraction of points in `shape_key`
+    Dict[str, float]
+        Dictionary containing:
+        - {shape_key}_enrichment: Fraction of points inside shape (0-1)
     """
 
-    def __init__(self, instance_key, shape_key):
+    def __init__(self, instance_key: str, shape_key: str):
         super().__init__(instance_key, shape_key)
 
     def extract(self, df):
@@ -849,16 +899,22 @@ class ShapeEnrichment(PointFeature):
         return {f"{self.shape_key}_enrichment": enrichment}
 
 
-def _second_moment(centroid, pts):
-    """
-    Calculate second moment of points with centroid as reference.
+def _second_moment(centroid: np.ndarray, pts: np.ndarray) -> float:
+    """Calculate second moment of points relative to a centroid.
 
     Parameters
     ----------
-    centroid : [1 x 2] float
-    pts : [n x 2] float
+    centroid : np.ndarray
+        Reference point coordinates, shape (1, 2)
+    pts : np.ndarray
+        Point coordinates, shape (n, 2)
+
+    Returns
+    -------
+    float
+        Second moment value
     """
-    if type(centroid) != np.ndarray:
+    if type(centroid) is np.ndarray:
         centroid = centroid.coords
     centroid = np.array(centroid).reshape(1, 2)
     radii = distance.cdist(centroid, pts)
@@ -866,13 +922,13 @@ def _second_moment(centroid, pts):
     return second_moment
 
 
-def list_point_features():
-    """Return a DataFrame of available point features. Pulls descriptions from function docstrings.
+def list_point_features() -> pd.DataFrame:
+    """List available point feature calculations.
 
     Returns
     -------
-    list
-        List of available point features.
+    pd.DataFrame
+        DataFrame with feature names as index and descriptions from docstrings
     """
 
     # Get point feature descriptions from docstrings
@@ -899,15 +955,20 @@ point_features = dict(
 )
 
 
-def register_point_feature(name: str, FeatureClass: PointFeature):
-    """Register a new point feature function.
+def register_point_feature(name: str, FeatureClass: Type[PointFeature]) -> None:
+    """Register a new point feature calculation class.
 
     Parameters
     ----------
     name : str
-        Name of feature function
-    func : class
-        Class that extends PointFeature. Needs to override abstract functions.
+        Name to register the feature as
+    FeatureClass : Type[PointFeature]
+        Class that extends PointFeature base class
+
+    Returns
+    -------
+    None
+        Updates global point_features dictionary
     """
 
     point_features[name] = FeatureClass

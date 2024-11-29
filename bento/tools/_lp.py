@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Union
 import pickle
 import warnings
 
@@ -29,23 +29,32 @@ def lp(
     recompute=False,
 ):
     """Predict transcript subcellular localization patterns.
-    Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
+
+    Predicts patterns including: cell edge, cytoplasmic, nuclear edge, nuclear, none.
+    Computes required features if they don't exist.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
-
-    groupby : str or list of str
-        Key in `sdata.points[points_key] to groupby, by default None. Always treats each cell separately
+        Input SpatialData object
+    instance_key : str, default "cell_boundaries"
+        Key for cell boundaries in sdata.shapes
+    nucleus_key : str, default "nucleus_boundaries"
+        Key for nucleus boundaries in sdata.shapes
+    groupby : str or list of str, default "feature_name"
+        Column(s) in sdata.points to group transcripts by
+    num_workers : int, default 1
+        Number of parallel workers for feature computation
+    recompute : bool, default False
+        Whether to recompute existing features
 
     Returns
     -------
-    sdata : SpatialData
-        .tables["table"].uns['lp']
-            Localization pattern indicator matrix.
-        .tables["table"].uns['lpp']
-            Localization pattern probabilities.
+    None
+        Modifies sdata.tables["table"].uns with:
+        - 'lp': DataFrame of binary pattern indicators
+        - 'lpp': DataFrame of pattern probabilities
+        Also computes pattern statistics via lp_stats()
     """
 
     if isinstance(groupby, str):
@@ -148,19 +157,19 @@ def lp(
 
 
 def lp_stats(sdata: SpatialData):
-    """Computes frequencies of localization patterns across cells and genes.
+    """Compute frequencies of localization patterns across cells and genes.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    instance_key : str
-        cell boundaries instance key
+        Input SpatialData object with localization pattern results
 
     Returns
     -------
-    sdata : SpatialData
-        .tables["table"].uns['lp_stats']: DataFrame of localization pattern frequencies.
+    None
+        Modifies sdata with:
+        - tables["table"].uns['lp_stats']: Pattern frequencies per group
+        - points["transcripts"]: Adds 'pattern' column with top pattern
     """
     instance_key = get_instance_key(sdata)
     feature_key = get_feature_key(sdata)
@@ -191,22 +200,26 @@ def lp_stats(sdata: SpatialData):
     set_points_metadata(sdata, "transcripts", top_pattern_long, "pattern")
 
 
-def _lp_logfc(sdata, instance_key, phenotype=None):
-    """Compute pairwise log2 fold change of patterns between groups in phenotype.
+def _lp_logfc(sdata, instance_key, phenotype):
+    """Compute pairwise log2 fold change of patterns between phenotype groups.
 
     Parameters
     ----------
-    data : SpatialData
-        Spatial formatted SpatialData object.
-    instance_key: str
-        cell boundaries instance key
+    sdata : SpatialData
+        Input SpatialData object containing localization pattern results
+    instance_key : str
+        Key for cell boundaries in sdata.shapes
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in sdata.shapes["cell_boundaries"].columns.
+        Column in sdata.shapes[instance_key] containing group labels
 
     Returns
     -------
-    gene_fc_stats : DataFrame
-        log2 fold change of patterns between groups in phenotype.
+    pd.DataFrame
+        Log2 fold changes between groups with columns:
+        - feature_name: Feature identifier
+        - log2fc: Log2 fold change between groups
+        - phenotype: Group identifier 
+        - pattern: Pattern name
     """
     stats = sdata.tables["table"].uns["lp_stats"]
 
@@ -231,13 +244,19 @@ def _lp_logfc(sdata, instance_key, phenotype=None):
         )
 
         def log2fc(group_col):
-            """
-            Return
-            ------
-            log2fc : int
-                log2fc of group_count / rest, pseudocount of 1
-            group_count : int
-            rest_mean_count : int
+            """Calculate log2 fold change between one group and mean of other groups.
+
+            Parameters
+            ----------
+            group_col : pd.Series
+                Pattern frequencies for one phenotype group
+
+            Returns
+            -------
+            pd.DataFrame
+                DataFrame with columns:
+                - log2fc: log2 fold change of group vs mean of other groups (with pseudocount of 1)
+                - phenotype: name of the group
             """
             group_name = group_col.name
             rest_cols = group_freq.columns[group_freq.columns != group_name]
@@ -267,21 +286,29 @@ def _lp_logfc(sdata, instance_key, phenotype=None):
 
 
 def _lp_diff_gene(cell_by_pattern, phenotype_series, instance_key):
-    """Perform pairwise comparison between groupby and every class.
+    """Test differential pattern usage between phenotype groups using logistic regression.
 
     Parameters
     ----------
-    cell_by_pattern : DataFrame
-        Cell by pattern matrix.
-    phenotype_series : Series
-        Series of cell groupings.
+    cell_by_pattern : pd.DataFrame
+        Binary matrix of cells x patterns (0/1 indicators)
+    phenotype_series : pd.Series
+        Cell phenotype labels indexed by instance_key
     instance_key : str
-        cell boundaries instance key
+        Key identifying cells in cell_by_pattern index
 
     Returns
     -------
-    DataFrame
-        Differential localization test results. [# of patterns, ]
+    pd.DataFrame
+        Statistical test results with columns:
+        - pattern: Pattern name
+        - dy/dx: Marginal effect size
+        - std_err: Standard error
+        - z: Z-score statistic
+        - pvalue: Raw p-value
+        - ci_low: Lower confidence interval
+        - ci_high: Upper confidence interval
+        - phenotype: Group identifier
     """
     cell_by_pattern = cell_by_pattern.dropna().reset_index(drop=True)
 
@@ -349,29 +376,28 @@ def _lp_diff_gene(cell_by_pattern, phenotype_series, instance_key):
 def lp_diff_discrete(
     sdata: SpatialData, instance_key: str = "cell_boundaries", phenotype: str = None
 ):
-    """Gene-wise test for differential localization across phenotype of interest.
+    """Test for differential localization patterns between discrete phenotype groups.
 
-    Scenarios:
-    Missing patterns within phenotype groupings
-    Solution:
-    - Warn user about missing patterns
-    - Remove missing patterns from analysis
-    - Return results with missing patterns removed
+    Performs pairwise statistical testing between phenotype groups for each pattern
+    and gene combination. Missing patterns are excluded from analysis.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    instance_key : str
-        cell boundaries instance key.
+        Input SpatialData object with localization pattern results
+    instance_key : str, default "cell_boundaries"
+        Key for cell boundaries in sdata.shapes
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
+        Column in sdata.shapes[instance_key] containing group labels
 
     Returns
     -------
-    sdata : SpatialData
-        .tables["table"].uns['diff_{phenotype}']
-            Long DataFrame with differential localization test results across phenotype groups.
+    None
+        Modifies sdata.tables["table"].uns[f'diff_{phenotype}'] with:
+        - Statistical results (p-values, z-scores)
+        - Effect sizes (dy/dx)
+        - Log2 fold changes between groups
+        - Multiple testing corrected p-values
     """
     lp_df = sdata.tables["table"].uns["lp"]
 
@@ -450,22 +476,24 @@ def lp_diff_discrete(
 def lp_diff_continuous(
     sdata: SpatialData, instance_key: str = "cell_boundaries", phenotype: str = None
 ):
-    """Gene-wise test for differential localization across phenotype of interest.
+    """Test correlation between localization patterns and continuous phenotype values.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    instance_key : str
-        cell boundaries instance key.
+        Input SpatialData object with localization pattern results
+    instance_key : str, default "cell_boundaries"
+        Key for cell boundaries in sdata.shapes  
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
+        Column in sdata.shapes[instance_key] containing continuous values
 
     Returns
     -------
-    sdata : SpatialData
-        .tables["table"].uns['diff_{phenotype}']
-            Long DataFrame with differential localization test results across phenotype groups.
+    None
+        Modifies sdata.tables["table"].uns[f'diff_{phenotype}'] with:
+        - feature_name: Feature identifier
+        - pattern: Pattern name
+        - pearson_correlation: Correlation coefficient with phenotype
     """
     stats = sdata.tables["table"].uns["lp_stats"]
     lpp = sdata.tables["table"].uns["lpp"]
