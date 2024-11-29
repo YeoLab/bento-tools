@@ -98,7 +98,7 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
     if len(shape_keys) == 0:
         return sdata
 
-    parent_shape = gpd.GeoDataFrame(sdata.shapes[instance_key])
+    parent_shape = gpd.GeoDataFrame(geometry=sdata.shapes[instance_key])
 
     # sjoin shapes to instance_key shape
     for shape_key in shape_keys:
