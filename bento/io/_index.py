@@ -118,6 +118,7 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
                 ]
                 .fillna("")
                 .astype("category")
+                .cat.add_categories([""])
             )
             .rename(columns={"index_right": shape_key})
         )
