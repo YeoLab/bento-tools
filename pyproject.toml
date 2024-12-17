@@ -24,7 +24,7 @@ dependencies = [
     "upsetplot>=0.9.0",
     "xgboost>=2.0.3",
     "statsmodels>=0.14.1",
-    "scikit-learn>=1.4.2",
+    "scikit-learn<1.6.0",
     "ipywidgets>=8.1.5",
 ]
 license = "BSD-2-Clause"
