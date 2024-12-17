@@ -98,7 +98,7 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
     if len(shape_keys) == 0:
         return sdata
 
-    parent_shape = gpd.GeoDataFrame(geometry=sdata.shapes[instance_key])
+    parent_shape = gpd.GeoDataFrame(geometry=sdata.shapes[instance_key].geometry)
 
     # sjoin shapes to instance_key shape
     for shape_key in shape_keys:
@@ -118,10 +118,14 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
                 ]
                 .fillna("")
                 .astype("category")
-                .cat.add_categories([""])
             )
             .rename(columns={"index_right": shape_key})
         )
+
+        # Add empty category to shape_key if not already present
+        if "" not in parent_shape[shape_key].cat.categories:
+            parent_shape[shape_key] = parent_shape[shape_key].cat.add_categories([""])
+
         parent_shape[shape_key] = parent_shape[shape_key].fillna("")
 
         # Save shape index as column in instance_key shape

@@ -245,7 +245,7 @@ class PointFeature(metaclass=ABCMeta):
         Dict[str, float]
             Computed feature values
         """
-        return df.to_dict("list")
+        return df
 
 
 class ShapeProximity(PointFeature):
@@ -914,7 +914,7 @@ def _second_moment(centroid: np.ndarray, pts: np.ndarray) -> float:
     float
         Second moment value
     """
-    if type(centroid) is np.ndarray:
+    if type(centroid) is not np.ndarray:
         centroid = centroid.coords
     centroid = np.array(centroid).reshape(1, 2)
     radii = distance.cdist(centroid, pts)
