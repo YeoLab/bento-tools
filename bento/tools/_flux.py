@@ -562,7 +562,7 @@ def fluxmap(
     sdata.points[points_key] = sdata.points[points_key].drop(old_cols, axis=1)
 
     _sjoin_points(sdata=sdata, shape_keys=fluxmap_names, points_key=points_key)
-    _sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names)
+    _sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names, instance_map_type="1to1")
 
     pbar.update()
     pbar.set_description("Done")
