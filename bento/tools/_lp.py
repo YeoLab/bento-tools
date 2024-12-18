@@ -174,7 +174,7 @@ def lp_stats(sdata: SpatialData):
     """
     instance_key = get_instance_key(sdata)
     feature_key = get_feature_key(sdata)
-    lp = sdata.table.uns["lp"]
+    lp = sdata["table"].uns["lp"]
 
     cols = lp.columns
     groupby = list(cols[~cols.isin(PATTERN_NAMES)])
@@ -183,7 +183,7 @@ def lp_stats(sdata: SpatialData):
     g_pattern_counts = lp.groupby(groupby, observed=True).apply(
         lambda df: df[PATTERN_NAMES].sum().astype(int)
     )
-    sdata.table.uns["lp_stats"] = g_pattern_counts
+    sdata["table"].uns["lp_stats"] = g_pattern_counts
 
     lpp = sdata["table"].uns["lpp"]
     top_pattern = lpp[[instance_key, feature_key]]
@@ -219,7 +219,7 @@ def _lp_logfc(sdata, instance_key, phenotype):
         Log2 fold changes between groups with columns:
         - feature_name: Feature identifier
         - log2fc: Log2 fold change between groups
-        - phenotype: Group identifier 
+        - phenotype: Group identifier
         - pattern: Pattern name
     """
     stats = sdata.tables["table"].uns["lp_stats"]
@@ -484,7 +484,7 @@ def lp_diff_continuous(
     sdata : SpatialData
         Input SpatialData object with localization pattern results
     instance_key : str, default "cell_boundaries"
-        Key for cell boundaries in sdata.shapes  
+        Key for cell boundaries in sdata.shapes
     phenotype : str
         Column in sdata.shapes[instance_key] containing continuous values
 
