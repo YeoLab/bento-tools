@@ -30,7 +30,8 @@ dependencies = [
 license = "BSD-2-Clause"
 readme = "README.md"
 requires-python = ">= 3.10"
-dynamic = ["version"]
+version = "2.1.4"
+
 
 [project.optional-dependencies]
 docs = [
