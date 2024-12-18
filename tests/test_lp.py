@@ -3,7 +3,7 @@ import pytest
 
 import bento as bt
 
-from . import conftest
+from tests import conftest
 
 
 @pytest.fixture(scope="module")

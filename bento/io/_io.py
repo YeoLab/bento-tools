@@ -1,7 +1,8 @@
 import warnings
-from typing import List
+from typing import List, Union
 
 import emoji
+import spatialdata as sd
 from anndata.utils import make_index_unique
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
@@ -19,29 +20,38 @@ def prep(
     feature_key: str = "feature_name",
     instance_key: str = "cell_boundaries",
     shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
+    instance_map_type: Union[dict, str] = "1to1",
 ) -> SpatialData:
     """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
 
-    Specifically, this function indexes points to shapes and joins shapes to the instance shape. It also computes a count table for the points.
+    This function indexes points to shapes, joins shapes to the instance shape, and computes a count table for the points.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
-    points_key : str
+        SpatialData object
+    points_key : str, default "transcripts"
         Key for points DataFrame in `sdata.points`
-    feature_key : str
+    feature_key : str, default "feature_name"
         Key for the feature name in the points DataFrame
-    instance_key : str
+    instance_key : str, default "cell_boundaries"
         Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    shape_keys : str, list
+    shape_keys : List[str], default ["cell_boundaries", "nucleus_boundaries"]
         List of shape names to index points to
+    instance_map_type : str, dict
+        Type of mapping to use for the instance shape. If "1to1", each instance shape will be mapped to a single shape at most.
+        If "1tomany", each instance shape will be mapped to one or more shapes;
+        multiple shapes mapped to the same instance shape will be merged into a single MultiPolygon.
+        Use a dict to specify different mapping types for each shape.
 
     Returns
     -------
     SpatialData
-        .shapes[shape_key]: Updated shapes GeoDataFrame with string index
-        .points[points_key]: Updated points DataFrame with string index for each shape
+        Updated SpatialData object with:
+        - Updated shapes in `sdata.shapes[shape_key]` with string index
+        - Updated points in `sdata.points[points_key]` with string index for each shape
+        - New count table in `sdata.tables["table"]`
+        - Updated attributes for instance_key and feature_key
     """
 
     # Renames geometry column of shape element to match shape name
@@ -50,6 +60,24 @@ def prep(
         if shape_key == instance_key:
             shape_gdf[shape_key] = shape_gdf["geometry"]
         shape_gdf.index = make_index_unique(shape_gdf.index.astype(str))
+
+    transform = {
+        "global": sd.transformations.get_transformation(sdata.points[points_key])
+    }
+    if "global" in sdata.points[points_key].attrs["transform"]:
+        # Force points to 2D for Xenium data
+        if isinstance(transform["global"], sd.transformations.Scale):
+            transform = {
+                "global": sd.transformations.Scale(
+                    scale=transform.to_scale_vector(["x", "y"]), axes=["x", "y"]
+                )
+            }
+    sdata.points[points_key] = sd.models.PointsModel.parse(
+        sdata.points[points_key].compute().reset_index(drop=True),
+        coordinates={"x": "x", "y": "y"},
+        feature_key=feature_key,
+        transformations=transform,
+    )
 
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
@@ -72,20 +100,25 @@ def prep(
     sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
 
     pbar = tqdm(total=3)
+    if len(shape_sjoin) > 0:
+        pbar.set_description(
+            "Mapping shapes"
+        )  # Map shapes must happen first; manyto1 mapping resets shape index
+        sdata = _sjoin_shapes(
+            sdata=sdata,
+            instance_key=instance_key,
+            shape_keys=shape_sjoin,
+            instance_map_type=instance_map_type,
+        )
+
+    pbar.update()
+
     if len(point_sjoin) > 0:
         pbar.set_description("Mapping points")
         sdata = _sjoin_points(
             sdata=sdata,
             points_key=points_key,
             shape_keys=point_sjoin,
-        )
-
-    pbar.update()
-
-    if len(shape_sjoin) > 0:
-        pbar.set_description("Mapping shapes")
-        sdata = _sjoin_shapes(
-            sdata=sdata, instance_key=instance_key, shape_keys=shape_sjoin
         )
 
     pbar.update()

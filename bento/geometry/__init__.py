@@ -1,1 +1,1 @@
-from ._ops import overlay, labels_to_shapes
+from ._ops import overlay

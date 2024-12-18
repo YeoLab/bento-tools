@@ -83,7 +83,7 @@ TODO
 
 ### Shape Features
 
-Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest. The set of available shape features is described in the Shape Feature Catalog. Use the function `bt.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
+Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest. The set of available shape features is described in the Shape Feature Catalog. Use the function `bt.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](tutorial_gallery/Spatial_Features.html) for more information.
 
 ```{eval-rst}
 .. currentmodule:: bento.tl

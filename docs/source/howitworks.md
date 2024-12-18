@@ -6,7 +6,7 @@
 
 ## Data Format
 
-Under the hood, we use the [SpatialData](https://spatialdata.scverse.org/en/latest/) framework to manage `SpatialData` objects in Python, allowing us to store and manipulate spatial data in a standardized format. Briefly, `SpatialData` objects are stored on-disk in the Zarr storage format. We aim to be fully compatible with SpatialData, so you can use the same objects in both Bento and SpatialData.
+Under the hood, we use the {doc}`SpatialData <spatialdata:index>` framework to manage `SpatialData` objects in Python, allowing us to store and manipulate spatial data in a standardized format. Briefly, `SpatialData` objects are stored on-disk in the Zarr storage format. We aim to be fully compatible with SpatialData, so you can use the same objects in both Bento and SpatialData.
 
 To enable scalable and performant operation with Bento, we perform spatial indexing on the data upfront and store these indices as metadata. This allows us to quickly query points within shapes, and shapes that contain points. Bento adopts a cell-centric approach, where each cell is treated as an independent unit of analysis. This allows us to perform subcellular spatial analysis within individual cells, and aggregate results across cells.
 
@@ -47,7 +47,7 @@ The `SpatialData` object is a container for the following elements:
 - `Shapes`: boundaries, circles, polygons
 - `Tables`: annotations, count matrices
 
-See the [Data Prep Guide](tutorial_gallery/Data_Prep_Guide.html) for more information on how to prepare `SpatialData` objects for Bento and official [SpatialData documentation](https://spatialdata.scverse.org) for more info.
+See the {doc}`Data Prep Guide </tutorial_gallery/Data_Prep_Guide>` for more information on how to prepare `SpatialData` objects for Bento and official {doc}`SpatialData docs <spatialdata:index>` for more info.
 
 
 ## RNAflux

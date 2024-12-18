@@ -1,5 +1,5 @@
 
-from . import conftest
+from tests import conftest
 
 
 def test_points_indexing(small_data):

@@ -1,3 +1,5 @@
+from ._version import __version__
+
 from . import _utils as ut
 from . import geometry as geo
 from . import plotting as pl

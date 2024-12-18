@@ -15,7 +15,14 @@ from dataclasses import asdict
 
 from sphinxawesome_theme import LinkIcon, ThemeOptions
 
-sys.path.insert(0, os.path.abspath(".."))  # Source code dir relative to this file
+sys.path.insert(0, os.path.abspath("../.."))  # Go up two levels to reach project root
+
+# Debug imports
+try:
+    import bento
+    print(f"Successfully imported bento from {bento.__file__}")
+except ImportError as e:
+    print(f"Failed to import bento: {e}")
 
 
 # -- Project information -----------------------------------------------------
@@ -57,7 +64,7 @@ myst_enable_extensions = [
 intersphinx_mapping = {
     "geopandas": ("https://geopandas.org/en/stable/", None),
     "shapely": ("https://shapely.readthedocs.io/en/stable/", None),
-    "spatialdata": ("https://spatialdata.readthedocs.io/en/stable/", None),
+    "spatialdata": ("https://spatialdata.scverse.org/en/stable/", None),
     "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
     "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
 }
