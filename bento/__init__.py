@@ -1,3 +1,5 @@
+from ._version import __version__
+
 from . import _utils as ut
 from . import geometry as geo
 from . import plotting as pl
@@ -6,3 +8,17 @@ from . import datasets as ds
 from . import io
 from .plotting import _colors as colors
 from ._constants import CosMx, Merscope, Xenium
+
+__all__ = [
+    "__version__",
+    "ut",
+    "geo",
+    "pl",
+    "tl",
+    "ds",
+    "io",
+    "colors",
+    "CosMx",
+    "Merscope",
+    "Xenium",
+]
