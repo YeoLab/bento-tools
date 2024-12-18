@@ -85,6 +85,8 @@ def _sjoin_shapes(
         Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
     shape_keys : List[str]
         Names of the shapes to add.
+    instance_map_type : str
+        Type of instance mapping to use. "1tomany" or "manyto1".
 
     Returns
     -------
