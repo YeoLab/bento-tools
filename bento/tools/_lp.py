@@ -1,4 +1,5 @@
 from typing import List, Union
+import os
 import pickle
 import warnings
 
@@ -109,7 +110,7 @@ def lp(
     invalid_samples = X_df.isna().any(axis=1)
 
     # Load trained model
-    model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
+    model_dir = os.path.join(os.path.dirname(bento.__file__), "models")
     model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
 
     # Compatibility with newer versions of scikit-learn
