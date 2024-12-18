@@ -16,21 +16,21 @@ def _sjoin_points(
     points_key: str,
     shape_keys: List[str],
 ):
-    """Index points to shapes and add as columns to `data.points[points_key]`. Only supports 2D points for now.
+    """Index points to shapes and add as columns to `sdata.points[points_key]`. Only supports 2D points for now.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        SpatialData object
     points_key : str
         Key for points DataFrame in `sdata.points`
-    shape_keys : str, list
+    shape_keys : List[str]
         List of shape names to index points to
 
     Returns
     -------
-    sdata : SpatialData
-        .points[points_key]: Updated points DataFrame with string index for each shape
+    SpatialData
+        Updated SpatialData object with `sdata.points[points_key]` containing new columns for each shape index
     """
 
     if isinstance(shape_keys, str):
@@ -68,6 +68,7 @@ def _sjoin_points(
     return sdata
 
 
+
 def _sjoin_shapes(
     sdata: SpatialData,
     instance_key: str,
@@ -79,16 +80,16 @@ def _sjoin_shapes(
     Parameters
     ----------
     sdata : SpatialData
-        Spatially formatted SpatialData
+        SpatialData object
     instance_key : str
         Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    shape_keys : str or list of str
+    shape_keys : List[str]
         Names of the shapes to add.
 
     Returns
     -------
-    sdata : SpatialData
-        .shapes[cell_shape_key][shape_key]
+    SpatialData
+        Updated SpatialData object with `sdata.shapes[instance_key]` containing new columns for each shape index
     """
 
     # Cast to list if not already
@@ -103,7 +104,7 @@ def _sjoin_shapes(
     if len(shape_keys) == 0:
         return sdata
 
-    parent_shape = gpd.GeoDataFrame(sdata.shapes[instance_key])
+    parent_shape = gpd.GeoDataFrame(geometry=sdata.shapes[instance_key].geometry)
 
     # sjoin shapes to instance_key shape
     for shape_key in shape_keys:
@@ -146,6 +147,7 @@ def _sjoin_shapes(
             .rename(columns={"index_right": shape_key})
         )
 
+        # Add empty category to shape_key if not already present
         if (
             parent_shape[shape_key].dtype == "category"
             and "" not in parent_shape[shape_key].cat.categories

@@ -17,27 +17,26 @@ def filter_by_gene(
     min_count: int = 10,
     points_key: str = "transcripts",
     feature_key: str = "feature_name",
-):
-    """
-    Filters out genes with low expression from the spatial data object.
+) -> SpatialData:
+    """Filter out genes with low expression.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    threshold : int
-        Minimum number of counts for a gene to be considered expressed.
-        Keep genes where at least {threshold} molecules are detected in at least one cell.
-    points_key : str
-        key for points element that holds transcript coordinates
-    feature_key : str
-        Key for gene instances
+        Input SpatialData object
+    min_count : int, default 10
+        Minimum number of molecules required per gene
+    points_key : str, default "transcripts"
+        Key for points in sdata.points
+    feature_key : str, default "feature_name"
+        Column name containing gene identifiers
 
     Returns
     -------
-    sdata : SpatialData
-        .points[points_key] is updated to remove genes with low expression.
-        .tables["table"] is updated to remove genes with low expression.
+    SpatialData
+        Updated object with filtered:
+        - points[points_key]: Only points from expressed genes
+        - tables["table"]: Only expressed genes
     """
     gene_filter = (sdata.tables["table"].X >= min_count).sum(axis=0) > 0
     filtered_table = sdata.tables["table"][:, gene_filter]
@@ -71,23 +70,28 @@ def get_points(
     astype: str = "pandas",
     sync: bool = True,
 ) -> Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]:
-    """Get points DataFrame synced to AnnData object.
+    """Get points data synchronized with cell boundaries.
 
     Parameters
     ----------
-    data : SpatialData
-        Spatial formatted SpatialData object
-    key : str, optional
-        Key for `data.points` to use, by default "transcripts"
-    astype : str, optional
-        Whether to return a 'pandas' DataFrame, 'dask' DataFrame, or 'geopandas' GeoDataFrame, by default "pandas"
-    sync : bool, optional
-        Whether to set and retrieve points synced to instance_key shape. Default True.
+    sdata : SpatialData
+        Input SpatialData object
+    points_key : str, default "transcripts"
+        Key for points in sdata.points
+    astype : str, default "pandas"
+        Return type: 'pandas', 'dask', or 'geopandas'
+    sync : bool, default True
+        Whether to sync points with instance_key shapes
 
     Returns
     -------
-    DataFrame or GeoDataFrame
-        Returns `data.points[key]` as a `[Geo]DataFrame` or 'Dask DataFrame'
+    Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]
+        Points data in requested format
+
+    Raises
+    ------
+    ValueError
+        If points_key not found or invalid astype
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"Points key {points_key} not found in sdata.points")
@@ -114,22 +118,31 @@ def get_points(
         )
 
 
-def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoSeries:
-    """Get a GeoSeries of Polygon objects from an SpatialData object.
+def get_shape(
+    sdata: SpatialData, 
+    shape_key: str, 
+    sync: bool = True
+) -> gpd.GeoSeries:
+    """Get shape geometries synchronized with cell boundaries.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        Input SpatialData object
     shape_key : str
-        Name of shape column in sdata.shapes
-    sync : bool
-        Whether to set and retrieve shapes synced to cell shape. Default True.
+        Key for shapes in sdata.shapes
+    sync : bool, default True
+        Whether to sync shapes with instance_key shapes
 
     Returns
     -------
-    GeoSeries
-        GeoSeries of Polygon objects
+    gpd.GeoSeries
+        Shape geometries
+
+    Raises
+    ------
+    ValueError
+        If shape_key not found in sdata.shapes
     """
     instance_key = sdata.tables["table"].uns["spatialdata_attrs"]["instance_key"]
 
@@ -152,23 +165,28 @@ def get_points_metadata(
     points_key: str,
     astype: str = "pandas",
 ) -> Union[pd.DataFrame, dd.DataFrame]:
-    """Get points metadata.
+    """Get metadata columns from points data.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        Input SpatialData object
     metadata_keys : str or list of str
-        Key(s) for `sdata.points[points_key][key]` to use
-    points_key : str, optional
-        Key for `sdata.points` to use, by default "transcripts"
-    astype : str, optional
-        Whether to return a 'pandas' Series or 'dask' DataFrame, by default "pandas"
+        Column name(s) to retrieve
+    points_key : str
+        Key for points in sdata.points
+    astype : str, default "pandas"
+        Return type: 'pandas' or 'dask'
 
     Returns
     -------
-    pd.DataFrame or dd.DataFrame
-        Returns `sdata.points[points_key][metadata_keys]` as a `pd.DataFrame` or `dd.DataFrame`
+    Union[pd.DataFrame, dd.DataFrame]
+        Requested metadata columns
+
+    Raises
+    ------
+    ValueError
+        If points_key or metadata_keys not found
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"Points key {points_key} not found in sdata.points")
@@ -195,21 +213,26 @@ def get_shape_metadata(
     metadata_keys: Union[List[str], str],
     shape_key: str,
 ) -> pd.DataFrame:
-    """Get shape metadata.
+    """Get metadata columns from shapes data.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        Input SpatialData object
     metadata_keys : str or list of str
-        Key(s) for `sdata.shapes[shape_key][key]` to use
+        Column name(s) to retrieve
     shape_key : str
-        Key for `sdata.shapes` to use, by default "transcripts"
+        Key for shapes in sdata.shapes
 
     Returns
     -------
     pd.DataFrame
-        Returns `sdata.shapes[shape_key][metadata_keys]` as a `pd.DataFrame`
+        Requested metadata columns
+
+    Raises
+    ------
+    ValueError
+        If shape_key or metadata_keys not found
     """
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape key {shape_key} not found in sdata.shapes")
@@ -230,18 +253,23 @@ def set_points_metadata(
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
     columns: Union[List[str], str],
 ) -> None:
-    """Write metadata in SpatialData points element as column(s).
+    """Add metadata columns to points data.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        Input SpatialData object
     points_key : str
-        Name of element in sdata.points
-    metadata : pd.Series, pd.DataFrame, np.ndarray
-        Metadata to set for points. Assumes input is already aligned to points index.
-    column_names : str or list of str, optional
-        Name of column(s) to set. If None, use metadata column name(s), by default None
+        Key for points in sdata.points
+    metadata : array-like
+        Data to add as new columns
+    columns : str or list of str
+        Names for new columns
+
+    Raises
+    ------
+    ValueError
+        If points_key not found
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"{points_key} not found in sdata.points")
@@ -275,18 +303,23 @@ def set_shape_metadata(
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
     column_names: Union[List[str], str] = None,
 ) -> None:
-    """Write metadata in SpatialData shapes element as column(s). Aligns metadata index to shape index.
+    """Add metadata columns to shapes data.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        Input SpatialData object
     shape_key : str
-        Name of element in sdata.shapes
-    metadata : pd.Series, pd.DataFrame
-        Metadata to set for shape. Index must be a (sub)set of shape index.
+        Key for shapes in sdata.shapes
+    metadata : array-like
+        Data to add as new columns
     column_names : str or list of str, optional
-        Name of column(s) to set. If None, use metadata column name(s), by default None
+        Names for new columns. If None, use metadata column names
+
+    Raises
+    ------
+    ValueError
+        If shape_key not found
     """
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
@@ -320,21 +353,18 @@ def set_shape_metadata(
     # sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
 
 
-def _sync_points(sdata, points_key):
-    """
-    Check if points are synced to instance_key shape in a SpatialData object.
+def _sync_points(sdata: SpatialData, points_key: str) -> None:
+    """Synchronize points with cell boundaries.
+
+    Updates sdata.points[points_key] to only include points within cells.
 
     Parameters
     ----------
     sdata : SpatialData
-        The SpatialData object to check.
+        Input SpatialData object
     points_key : str
-        The name of the points to check.
+        Key for points in sdata.points
 
-    Raises
-    ------
-    ValueError
-        If the points are not synced to instance_key shape.
     """
     points = sdata.points[points_key].compute()
     instance_key = get_instance_key(sdata)
@@ -354,23 +384,20 @@ def _sync_points(sdata, points_key):
     sdata.points[points_key] = points_valid
 
 
-def _sync_shapes(sdata, shape_key, instance_key):
-    """
-    Check if a shape is synced to instance_key shape in a SpatialData object.
+def _sync_shapes(sdata: SpatialData, shape_key: str, instance_key: str) -> None:
+    """Synchronize shapes with cell boundaries.
+
+    Updates sdata.shapes[shape_key] to only include shapes within cells.
 
     Parameters
     ----------
     sdata : SpatialData
-        The SpatialData object to check.
+        Input SpatialData object
     shape_key : str
-        The name of the shape to check.
+        Key for shapes to sync
     instance_key : str
-        The instance key of the shape to check.
+        Key for cell boundaries
 
-    Raises
-    ------
-    ValueError
-        If the shape is not synced to instance_key shape.
     """
     shapes = sdata.shapes[shape_key]
     instance_shapes = sdata.shapes[instance_key]
@@ -388,19 +415,23 @@ def _sync_shapes(sdata, shape_key, instance_key):
     sdata.shapes[shape_key] = shapes_valid
 
 
-def get_instance_key(sdata: SpatialData):
-    """
-    Returns the instance key for the spatial data object.
+def get_instance_key(sdata: SpatialData) -> str:
+    """Get key for cell boundaries.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
+        Input SpatialData object
 
     Returns
     -------
-    instance_key : str
-        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
+    str
+        Key for cell boundaries in sdata.shapes
+
+    Raises
+    ------
+    KeyError
+        If instance key attribute not found
     """
     try:
         return sdata.points["transcripts"].attrs["spatialdata_attrs"]["instance_key"]
@@ -410,19 +441,23 @@ def get_instance_key(sdata: SpatialData):
         )
 
 
-def get_feature_key(sdata: SpatialData):
-    """
-    Returns the feature key for the spatial data object.
+def get_feature_key(sdata: SpatialData) -> str:
+    """Get key for gene identifiers.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
+        Input SpatialData object
 
     Returns
     -------
-    feature_key : str
-        Key for the feature name in the points DataFrame
+    str
+        Column name containing gene identifiers
+
+    Raises
+    ------
+    KeyError
+        If feature key attribute not found
     """
     try:
         return sdata.points["transcripts"].attrs["spatialdata_attrs"]["feature_key"]
