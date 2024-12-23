@@ -1,4 +1,4 @@
-from ._version import __version__
+__version__ = "2.1.4.post2"
 
 from . import _utils as ut
 from . import geometry as geo

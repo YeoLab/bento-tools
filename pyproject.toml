@@ -2,6 +2,7 @@
 name = "bento-tools"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = [{ name = "ckmah", email = "clarence.k.mah@gmail.com" }]
+dynamic = ["version"]
 dependencies = [
     "adjusttext>=1.1.1",
     "astropy>=6.0.1",
@@ -30,7 +31,6 @@ dependencies = [
 license = "BSD-2-Clause"
 readme = "README.md"
 requires-python = ">= 3.10"
-version = "2.1.4.post1"
 
 
 [project.optional-dependencies]
@@ -76,4 +76,4 @@ include = ["bento"]
 packages = ["bento"]
 
 [tool.hatch.version]
-path = "bento/_version.py"
+path = "bento/__init__.py"
