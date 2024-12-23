@@ -30,7 +30,7 @@ dependencies = [
 license = "BSD-2-Clause"
 readme = "README.md"
 requires-python = ">= 3.10"
-version = "2.1.4"
+version = "2.1.4.post1"
 
 
 [project.optional-dependencies]
@@ -46,7 +46,7 @@ extras = ["torch>=2.2.2", "spatialdata-plot>=0.2.4"]
 all = ["bento-tools[docs]", "bento-tools[extras]"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
 
 [tool.rye]
