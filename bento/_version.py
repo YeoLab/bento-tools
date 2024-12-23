@@ -4,7 +4,7 @@ def get_version():
     import os
     import pathlib
     
-    package_dir = pathlib.Path(__file__).parent.parent
+    package_dir = pathlib.Path(__file__).parent
     pyproject_path = os.path.join(package_dir, "pyproject.toml")
     
     with open(pyproject_path, "rb") as f:
