@@ -1,67 +1,88 @@
 import warnings
-from typing import List, Union
+from typing import List, Union, Dict
 
 import emoji
 import spatialdata as sd
-from anndata.utils import make_index_unique
+from anndata import AnnData
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
+import pandas as pd
+import numpy as np
 from tqdm.auto import tqdm
 
-from .._utils import _sync_points
+from .._utils import _sync_points, get_cell_key
 from ._index import _sjoin_points, _sjoin_shapes
+from .._constants import SHAPE_GRAPH_KEY, IS_CELL_KEY, SHAPE_ID_KEY
 
 warnings.filterwarnings("ignore")
 
 
 def prep(
     sdata: SpatialData,
+    cell_key: str,
     points_key: str = "transcripts",
     feature_key: str = "feature_name",
-    instance_key: str = "cell_boundaries",
-    shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
-    instance_map_type: Union[dict, str] = "1to1",
+    shape_map: List[Dict] = None,
+    map_type: Union[dict, str] = "1to1",
 ) -> SpatialData:
-    """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
+    """Computes spatial indices for elements in SpatialData; required to use the Bento API.
 
-    This function indexes points to shapes, joins shapes to the instance shape, and computes a count table for the points.
+    The function performs the following steps:
+    1. Preprocesses input shapes and points.
+        - Forces points to 2D
+        - Gives every shape an id column
+    2. Creates a shape graph to represent parent-child relationships between shapes.
+    3. Indexes points to shapes. (Points outside of {cell_key} shape are filtered out.)
+    4. Computes a count table for each shape.
 
     Parameters
     ----------
     sdata : SpatialData
         SpatialData object
-    points_key : str, default "transcripts"
-        Key for points DataFrame in `sdata.points`
-    feature_key : str, default "feature_name"
-        Key for the feature name in the points DataFrame
-    instance_key : str, default "cell_boundaries"
-        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    shape_keys : List[str], default ["cell_boundaries", "nucleus_boundaries"]
-        List of shape names to index points to
-    instance_map_type : str, dict
-        Type of mapping to use for the instance shape. If "1to1", each instance shape will be mapped to a single shape at most.
-        If "1tomany", each instance shape will be mapped to one or more shapes;
-        multiple shapes mapped to the same instance shape will be merged into a single MultiPolygon.
-        Use a dict to specify different mapping types for each shape.
+    cell_key : str
+        Key for the cell shape
+    points_key : str
+        Key for the points to index
+    feature_key : str
+        Key for the feature to count
+    shape_map : List[Dict]
+        List of dictionaries representing parent-child relationships between shapes
+    map_type : Union[dict, str]
+        How parent-child relationships are defined.
+        - "1to1": each parent has at most one child i.e. at most one nucleus per cell
+        - "1tomany": each parent can have one or more children. MultiPolygons are used to represent this. i.e. multi-nucleated cells
 
     Returns
     -------
     SpatialData
-        Updated SpatialData object with:
-        - Updated shapes in `sdata.shapes[shape_key]` with string index
-        - Updated points in `sdata.points[points_key]` with string index for each shape
-        - New count table in `sdata.tables["table"]`
-        - Updated attributes for instance_key and feature_key
+        Updated SpatialData object with shape graph and count tables. Mapped shapes have
+        new columns for each parent/child relationship.
     """
 
-    # Renames geometry column of shape element to match shape name
-    # Changes indices to strings
-    for shape_key, shape_gdf in sdata.shapes.items():
-        if shape_key == instance_key:
-            shape_gdf[shape_key] = shape_gdf["geometry"]
-        shape_gdf.index = make_index_unique(shape_gdf.index.astype(str))
+    shape_keys = list(sdata.shapes.keys())
+    shape_keys.sort()
 
-    transform = {
+    sdata = _preprocess_input(sdata, points_key, feature_key)
+
+    # Create shape graph
+    sdata = _create_shape_graph(sdata, cell_key, shape_map, shape_keys)
+
+    # sindex points and sjoin shapes if they have not been indexed or joined
+    sdata = _map_shapes(sdata, shape_map, map_type)
+    sdata = _sjoin_points(sdata, points_key, shape_keys)
+
+    # Only keep points within instance_key shape
+    _sync_points(sdata, points_key)
+
+    # Recompute count table
+    sdata = _compute_counts(sdata, points_key, feature_key, shape_keys)
+
+    return sdata
+
+
+def _preprocess_input(sdata, points_key, feature_key):
+    """Preprocess input shapes and points. Forces points to 2D."""
+    transform = {  # Assume points are in global coordinate system
         "global": sd.transformations.get_transformation(sdata.points[points_key])
     }
     if "global" in sdata.points[points_key].attrs["transform"]:
@@ -79,79 +100,101 @@ def prep(
         transformations=transform,
     )
 
-    # sindex points and sjoin shapes if they have not been indexed or joined
-    point_sjoin = []
-    shape_sjoin = []
+    # Give every shape an id column
+    for shape_key in sdata.shapes.keys():
+        shape = sdata.shapes[shape_key]
+        attrs = sdata.shapes[shape_key].attrs
+        shape[SHAPE_ID_KEY] = [f"S-{i}" for i in range(len(shape))]  # Add id column
+        shape = shape.reset_index(drop=True)  # Remove index
+        shape.attrs = attrs  # Add attrs
+        sdata.shapes[shape_key] = sd.models.ShapesModel.parse(shape)
+    return sdata
 
-    for shape_key in shape_keys:
-        # Compile list of shapes that need to be indexed to points
-        if shape_key not in sdata.points[points_key].columns:
-            point_sjoin.append(shape_key)
-        # Compile list of shapes that need to be joined to instance shape
-        if (
-            shape_key != instance_key
-            and shape_key not in sdata.shapes[instance_key].columns
-        ):
-            shape_sjoin.append(shape_key)
 
-    # Set instance key for points
-    if "spatialdata_attrs" not in sdata.points[points_key].attrs:
-        sdata.points[points_key].attrs["spatialdata_attrs"] = {}
-    sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
+def _create_shape_graph(sdata, cell_key, shape_map, shape_keys):
+    map_obs = pd.DataFrame(index=shape_keys)
+    map_obs[IS_CELL_KEY] = map_obs.index == cell_key
 
-    pbar = tqdm(total=3)
-    if len(shape_sjoin) > 0:
-        pbar.set_description(
-            "Mapping shapes"
-        )  # Map shapes must happen first; manyto1 mapping resets shape index
-        sdata = _sjoin_shapes(
-            sdata=sdata,
-            instance_key=instance_key,
-            shape_keys=shape_sjoin,
-            instance_map_type=instance_map_type,
-        )
+    # Create spares square matrix of shape parent-child relationships
+    # upper triangle is parent-child, lower triangle is child-parent
+    map_obsp = pd.DataFrame(0, index=shape_keys, columns=shape_keys, dtype=np.uint8)
 
-    pbar.update()
+    if shape_map is not None:
+        for parent_key in shape_map:
+            for child_key in shape_map[parent_key]:
+                map_obsp.loc[parent_key, child_key] = 1
 
-    if len(point_sjoin) > 0:
-        pbar.set_description("Mapping points")
-        sdata = _sjoin_points(
-            sdata=sdata,
-            points_key=points_key,
-            shape_keys=point_sjoin,
-        )
-
-    pbar.update()
-
-    # Only keep points within instance_key shape
-    _sync_points(sdata, points_key)
-
-    # Recompute count table
-    pbar.set_description("Agg. counts")
-
-    table = TableModel.parse(
-        sdata.aggregate(
-            values=points_key,
-            instance_key=instance_key,
-            by=instance_key,
-            value_key=feature_key,
-            aggfunc="count",
-        ).tables["table"]
-    )
-
-    pbar.update()
-
-    try:
-        del sdata.tables["table"]
-    except KeyError:
-        pass
-
-    sdata.tables["table"] = table
-    # Set instance key to cell_shape_key for all points and table
-    sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
-    sdata.points[points_key].attrs["spatialdata_attrs"]["feature_key"] = feature_key
-
-    pbar.set_description(emoji.emojize("Done :bento_box:"))
-    pbar.close()
+    sdata[SHAPE_GRAPH_KEY] = AnnData(obs=map_obs, obsp={SHAPE_GRAPH_KEY: map_obsp})
 
     return sdata
+
+
+def _map_shapes(sdata, shape_map, map_type):
+    """Iteratively map shapes to shapes according to shape_map relationships."""
+    if shape_map is None:
+        return sdata
+
+    for parent_key in shape_map:
+        # Make sure all child keys are in sdata.shapes
+        child_keys = shape_map[parent_key]
+        child_keys = [
+            child_key for child_key in child_keys if child_key in sdata.shapes
+        ]
+
+        sdata = _sjoin_shapes(sdata, parent_key, child_keys, map_type)
+
+    return sdata
+
+
+def _compute_counts(sdata, points_key, feature_key, shape_keys):
+    # TODO refactor all references to sdata['table'] to sdata["{shape_key}_table"]
+
+    for shape_key in shape_keys:
+        table = TableModel.parse(
+            sdata.aggregate(
+                values=points_key,
+                instance_key=shape_key,
+                by=shape_key,
+                value_key=feature_key,
+                aggfunc="count",
+            ).tables["table"]
+        )
+        sdata[f"{shape_key}_table"] = table
+
+    return sdata
+
+
+def _print_shape_graph(sdata):
+    """Print a visual representation of the parent/child relationships between shapes."""
+    # Get the shape relationships from the graph
+    shape_graph = sdata[SHAPE_GRAPH_KEY].obsp[SHAPE_GRAPH_KEY]
+    shape_names = sdata[SHAPE_GRAPH_KEY].obs_names
+
+    # Build dictionary of parent->children relationships
+    relationships = {}
+    for i, parent in enumerate(shape_names):
+        children = shape_names[shape_graph[i].nonzero()[0]]
+        relationships[parent] = sorted(children)
+
+    # Helper function to print tree recursively
+    def print_tree(node, prefix="", is_last=True):
+        stack = [(node, prefix, is_last)]
+
+        print("Shape Graph:")
+        while stack:
+            current, current_prefix, current_is_last = stack.pop()
+            connector = "└── " if current_is_last else "├── "
+            print(f"{current_prefix}{connector}{current}")
+
+            children = relationships.get(current, [])
+            child_prefix = current_prefix + ("    " if current_is_last else "│   ")
+
+            # Add children to stack in reverse order to maintain same output order
+            for i in range(len(children) - 1, -1, -1):
+                child = children[i]
+                child_is_last = i == len(children) - 1
+                stack.append((child, child_prefix, child_is_last))
+
+    # Get root node using IS_CELL_KEY
+    root = get_cell_key(sdata)
+    print_tree(root)

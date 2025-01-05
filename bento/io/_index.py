@@ -9,6 +9,7 @@ from .._utils import (
     set_points_metadata,
     set_shape_metadata,
 )
+from .._constants import SHAPE_ID_KEY
 
 
 def _sjoin_points(
@@ -24,19 +25,13 @@ def _sjoin_points(
         SpatialData object
     points_key : str
         Key for points DataFrame in `sdata.points`
-    shape_keys : List[str]
-        List of shape names to index points to
 
     Returns
     -------
     SpatialData
         Updated SpatialData object with `sdata.points[points_key]` containing new columns for each shape index
     """
-
-    if isinstance(shape_keys, str):
-        shape_keys = [shape_keys]
-
-    # Grab all shape GeoDataFrames to index points to
+    # Grab all shape geometries
     query_shapes = {}
     for shape in shape_keys:
         query_shapes[shape] = gpd.GeoDataFrame(geometry=sdata.shapes[shape].geometry)
@@ -68,22 +63,21 @@ def _sjoin_points(
     return sdata
 
 
-
 def _sjoin_shapes(
     sdata: SpatialData,
-    instance_key: str,
-    shape_keys: List[str],
+    parent_key: str,
+    child_keys: List[str],
     instance_map_type: Union[str, dict],
 ):
-    """Adds polygon indexes to sdata.shapes[instance_key][shape_key] for point feature analysis.
+    """Adds polygon indexes to sdata.shapes[parent_key][child_key] for point feature analysis.
 
     Parameters
     ----------
     sdata : SpatialData
         SpatialData object
-    instance_key : str
-        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    shape_keys : List[str]
+    parent_key : str
+        Key for the shape that will be used as the parent for all indexing.
+    child_keys : List[str]
         Names of the shapes to add.
     instance_map_type : str
         Type of instance mapping to use. "1tomany" or "manyto1".
@@ -91,86 +85,97 @@ def _sjoin_shapes(
     Returns
     -------
     SpatialData
-        Updated SpatialData object with `sdata.shapes[instance_key]` containing new columns for each shape index
+        Updated SpatialData object with `sdata.shapes[parent_key]` containing new columns for each shape index
     """
 
     # Cast to list if not already
-    if isinstance(shape_keys, str):
-        shape_keys = [shape_keys]
+    if isinstance(child_keys, str):
+        child_keys = [child_keys]
 
-    # Check if shapes are already indexed to instance_key shape
-    shape_keys = (
-        set(shape_keys) - set(sdata.shapes[instance_key].columns) - set(instance_key)
+    # Check if shapes are already indexed to parent shape
+    existing_child_keys = set(child_keys) & set(sdata.shapes[parent_key].columns)
+    if len(existing_child_keys) == len(child_keys):
+        print("SpatialData shapes already mapped. Skipped mapping.")
+        return sdata
+    if len(existing_child_keys) > 0:
+        print(f"{parent_key}: {existing_child_keys} maps already exist. Skipping.")
+
+    # Get child keys that are not already indexed
+    child_keys = (
+        set(child_keys) - set(sdata.shapes[parent_key].columns) - set(parent_key)
     )
 
-    if len(shape_keys) == 0:
-        return sdata
+    parent_shape = gpd.GeoDataFrame(
+        sdata.shapes[parent_key][[SHAPE_ID_KEY]],
+        geometry=sdata.shapes[parent_key].geometry,
+    ).reset_index(drop=True)
 
-    parent_shape = gpd.GeoDataFrame(geometry=sdata.shapes[instance_key].geometry)
-
-    # sjoin shapes to instance_key shape
-    for shape_key in shape_keys:
-        child_shape = sdata.shapes[shape_key].copy()
+    # sjoin shapes to parent shape
+    for child_key in child_keys:
+        child_shape = sdata.shapes[child_key].copy()
         child_attrs = child_shape.attrs
         # Hack for polygons that are 99% contained in parent shape or have shared boundaries
-        child_shape = gpd.GeoDataFrame(geometry=child_shape.buffer(-10e-6))
+        child_shape = gpd.GeoDataFrame(
+            child_shape[[SHAPE_ID_KEY]], geometry=child_shape.buffer(-10e-6)
+        ).reset_index(drop=True)
 
-        # Map child shape index to parent shape and process the result
-
+        # For 1tomany, create multipolygons for groups of child shapes such that each parent shape
+        # gets a single child shape at most
         if instance_map_type == "1tomany":
             child_shape = (
                 child_shape.sjoin(
-                    parent_shape.reset_index(drop=True),
+                    parent_shape,
                     how="left",
                     predicate="covered_by",
                 )
-                .dissolve(by="index_right", observed=True, dropna=False)
-                .reset_index(drop=True)[["geometry"]]
+                .dissolve(
+                    by=f"{SHAPE_ID_KEY}_right",
+                    observed=True,
+                    dropna=False,
+                    aggfunc="first",
+                )
+                .reset_index(drop=True)[["geometry", f"{SHAPE_ID_KEY}_left"]]
+                .rename(columns={f"{SHAPE_ID_KEY}_left": SHAPE_ID_KEY})
             )
-            child_shape.index = child_shape.index.astype(str)
-            child_shape = ShapesModel.parse(child_shape)
-            child_shape.attrs = child_attrs
-            sdata.shapes[shape_key] = child_shape
 
-        parent_shape = (
+        # Map child shape index to parent shape
+        parent2child = (
             parent_shape.sjoin(child_shape, how="left", predicate="covers")
-            .reset_index()  # ignore any user defined index name
-            .drop_duplicates(
-                subset="index", keep="last"
-            )  # Remove multiple child shapes mapped to same parent shape
-            .set_index("index")
-            .assign(  # can this just be fillna on index_right?
-                index_right=lambda df: df.loc[
-                    ~df["index_right"].duplicated(keep="first"), "index_right"
-                ]
-                .fillna("")
-                .astype("category")
-            )
-            .rename(columns={"index_right": shape_key})
+            .drop_duplicates(subset=f"{SHAPE_ID_KEY}_left", keep="first")
+            .drop_duplicates(subset=f"{SHAPE_ID_KEY}_right", keep="first")
+            .set_index(f"{SHAPE_ID_KEY}_left")[f"{SHAPE_ID_KEY}_right"]
+            .rename(child_key)
         )
+        parent2child.index.name = SHAPE_ID_KEY
 
         # Add empty category to shape_key if not already present
-        if (
-            parent_shape[shape_key].dtype == "category"
-            and "" not in parent_shape[shape_key].cat.categories
-        ):
-            parent_shape[shape_key] = parent_shape[shape_key].cat.add_categories([""])
-        parent_shape[shape_key] = parent_shape[shape_key].fillna("")
+        parent2child = _add_empty_category(parent2child)
+        set_shape_metadata(sdata, shape_key=parent_key, metadata=parent2child)
 
-        # Save shape index as column in instance_key shape
-        set_shape_metadata(
-            sdata, shape_key=instance_key, metadata=parent_shape[shape_key]
+        # Reverse mapping
+        child2parent = (
+            parent2child.reset_index()
+            .rename(columns={child_key: SHAPE_ID_KEY, SHAPE_ID_KEY: parent_key})
+            .set_index(SHAPE_ID_KEY)
+            .reindex(child_shape[SHAPE_ID_KEY])[parent_key]
+            .dropna()
         )
+        child2parent = _add_empty_category(child2parent)
 
-        # Add instance_key shape index to child shape
-        instance_index = (
-            parent_shape.drop_duplicates(subset=shape_key)
-            .reset_index()
-            .set_index(shape_key)["index"]
-            .rename(instance_key)
-            .loc[lambda s: s.index != ""]
+        # Remove child shapes that are not mapped to parent shape
+        child_shape = (
+            child_shape.set_index(SHAPE_ID_KEY).loc[child2parent.index].reset_index()
         )
+        child_shape = ShapesModel.parse(child_shape)
+        child_shape.attrs = child_attrs
+        sdata.shapes[child_key] = child_shape
 
-        set_shape_metadata(sdata, shape_key=shape_key, metadata=instance_index)
+        set_shape_metadata(sdata, shape_key=child_key, metadata=child2parent)
 
     return sdata
+
+
+def _add_empty_category(series: pd.Series) -> pd.Series:
+    if series.dtype == "category" and "" not in series.cat.categories:
+        series = series.cat.add_categories([""])
+    return series.fillna("")

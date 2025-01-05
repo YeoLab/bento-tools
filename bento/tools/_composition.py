@@ -5,7 +5,7 @@ from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import paired_distances
 from spatialdata._core.spatialdata import SpatialData
 
-from .._utils import get_feature_key, get_instance_key, get_points
+from .._utils import get_feature_key, get_cell_key, get_points
 
 
 def _get_compositions(
@@ -79,7 +79,7 @@ def comp(sdata: SpatialData, points_key: str, shape_names: List[str]) -> Spatial
     """
     points = get_points(sdata, points_key=points_key, astype="pandas")
 
-    instance_key = get_instance_key(sdata)
+    instance_key = get_cell_key(sdata)
     feature_key = get_feature_key(sdata)
 
     # Get average gene compositions for each batch
@@ -118,7 +118,7 @@ def comp_diff(
     """
     points = get_points(sdata, points_key=points_key, astype="pandas")
 
-    instance_key = get_instance_key(sdata)
+    instance_key = get_cell_key(sdata)
     feature_key = get_feature_key(sdata)
 
     # Get average gene compositions for each batch

@@ -5,6 +5,10 @@ PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
 PATTERN_PROBS = [f"{p}_p" for p in PATTERN_NAMES]
 PATTERN_THRESHOLDS_CALIB = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
 
+SHAPE_GRAPH_KEY = "shape_graph"
+IS_CELL_KEY = "is_cell"
+SHAPE_ID_KEY = "id"
+
 
 class CosMx(Enum):
     """CosMx microscope constants"""

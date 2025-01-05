@@ -11,6 +11,8 @@ import dask.dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
 
+from ._constants import SHAPE_GRAPH_KEY, IS_CELL_KEY, SHAPE_ID_KEY
+
 
 def filter_by_gene(
     sdata: SpatialData,
@@ -118,11 +120,7 @@ def get_points(
         )
 
 
-def get_shape(
-    sdata: SpatialData, 
-    shape_key: str, 
-    sync: bool = True
-) -> gpd.GeoSeries:
+def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoSeries:
     """Get shape geometries synchronized with cell boundaries.
 
     Parameters
@@ -311,8 +309,8 @@ def set_shape_metadata(
         Input SpatialData object
     shape_key : str
         Key for shapes in sdata.shapes
-    metadata : array-like
-        Data to add as new columns
+    metadata : list, np.ndarray, pd.Series, pd.DataFrame
+        Data to add as new columns. If pd.Series or pd.DataFrame, assume index is shape_ids
     column_names : str or list of str, optional
         Names for new columns. If None, use metadata column names
 
@@ -324,13 +322,14 @@ def set_shape_metadata(
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
 
-    shape_index = sdata.shapes[shape_key].index
+    # Order metadata by id order in sdata[shape_key]
+    shape_ids = sdata.shapes[shape_key][SHAPE_ID_KEY].values
 
-    if isinstance(metadata, list):
-        metadata = pd.Series(metadata, index=shape_index)
+    if isinstance(metadata, list) or isinstance(metadata, np.ndarray):
+        metadata = pd.Series(metadata, index=shape_ids)
 
-    if isinstance(metadata, pd.Series) or isinstance(metadata, np.ndarray):
-        metadata = pd.DataFrame(metadata)
+    if isinstance(metadata, pd.Series):
+        metadata = metadata.to_frame().reindex(shape_ids)  # assume index is shape_ids
 
     if column_names is not None:
         metadata.columns = (
@@ -348,7 +347,7 @@ def set_shape_metadata(
             metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
 
     sdata.shapes[shape_key] = sdata.shapes[shape_key].assign(
-        **metadata.reindex(shape_index).to_dict()
+        **metadata.reset_index(drop=True).to_dict()
     )
     # sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
 
@@ -367,17 +366,14 @@ def _sync_points(sdata: SpatialData, points_key: str) -> None:
 
     """
     points = sdata.points[points_key].compute()
-    instance_key = get_instance_key(sdata)
+    instance_key = get_cell_key(sdata)
 
     # Only keep points within instance_key shape
-    cells = set(sdata.shapes[instance_key].index)
     transform = sdata.points[points_key].attrs
-    points_valid = points[
-        points[instance_key].isin(cells)
-    ]  # TODO why doesnt this grab the right cells
+    points_valid = points[points[instance_key] != ""]
     # Set points back to SpatialData object
     points_valid = PointsModel.parse(
-        dd.from_pandas(points_valid, npartitions=1),
+        points_valid,
         coordinates={"x": "x", "y": "y"},
     )
     points_valid.attrs = transform
@@ -415,7 +411,7 @@ def _sync_shapes(sdata: SpatialData, shape_key: str, instance_key: str) -> None:
     sdata.shapes[shape_key] = shapes_valid
 
 
-def get_instance_key(sdata: SpatialData) -> str:
+def get_cell_key(sdata: SpatialData) -> str:
     """Get key for cell boundaries.
 
     Parameters
@@ -434,7 +430,13 @@ def get_instance_key(sdata: SpatialData) -> str:
         If instance key attribute not found
     """
     try:
-        return sdata.points["transcripts"].attrs["spatialdata_attrs"]["instance_key"]
+        is_cell = sdata[SHAPE_GRAPH_KEY].obs[IS_CELL_KEY] == 1
+
+        if is_cell.sum() != 1:
+            raise ValueError(
+                "There must be exactly one active cell boundary in SpatialData object. Run bento.io.prep() to setup SpatialData object for bento-tools."
+            )
+        return sdata[SHAPE_GRAPH_KEY].obs_names[is_cell].values[0]
     except KeyError:
         raise KeyError(
             "Instance key attribute not found in spatialdata object. Run bento.io.prep() to setup SpatialData object for bento-tools."

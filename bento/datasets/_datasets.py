@@ -109,7 +109,7 @@ def sample_data():
         sdata = prep(
             sdata,
             points_key="transcripts",
-            instance_key="cell_boundaries",
+            cell_key="cell_boundaries",
             feature_key="feature_name",
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )

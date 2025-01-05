@@ -9,7 +9,7 @@ from spatial_image import SpatialImage
 from spatialdata import SpatialData
 from spatialdata.models import ShapesModel
 
-from .._utils import get_feature_key, get_instance_key
+from .._utils import get_feature_key, get_cell_key
 from ..io import prep
 
 
@@ -20,9 +20,8 @@ def overlay(
     name: str,
     how: str = "intersection",
     make_valid: bool = True,
-    instance_map_type: str = "1to1",
 ):
-    """Overlay two shape elements in a SpatialData object and store the result as a new shape element.
+    """Overlay two shape elements in a SpatialData object and store the result as a new shape element. TODO: handle mapping and counting
 
     Parameters
     ----------
@@ -38,8 +37,6 @@ def overlay(
         Type of overlay operation to perform. Options are "intersection", "union", "difference", "symmetric_difference", by default "intersection"
     make_valid : bool, optional
         If True, correct invalid geometries with GeoPandas, by default True
-    instance_map_type : str, optional
-        Type of instance mapping to use. Options are "1to1", "1tomany", by default "1to1".
 
 
     Returns
@@ -57,11 +54,3 @@ def overlay(
     transform = shape1.attrs
     sdata.shapes[name] = ShapesModel.parse(new_shape)
     sdata.shapes[name].attrs = transform
-
-    sdata = prep(
-        sdata,
-        shape_keys=[name],
-        instance_key=get_instance_key(sdata),
-        feature_key=get_feature_key(sdata),
-        instance_map_type=instance_map_type,
-    )

@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 from spatialdata._core.spatialdata import SpatialData
 
 from .._constants import PATTERN_NAMES, PATTERN_THRESHOLDS_CALIB
-from .._utils import get_instance_key, get_feature_key, get_points, set_points_metadata
+from .._utils import get_cell_key, get_feature_key, get_points, set_points_metadata
 
 tqdm.pandas()
 
@@ -172,7 +172,7 @@ def lp_stats(sdata: SpatialData):
         - tables["table"].uns['lp_stats']: Pattern frequencies per group
         - points["transcripts"]: Adds 'pattern' column with top pattern
     """
-    instance_key = get_instance_key(sdata)
+    instance_key = get_cell_key(sdata)
     feature_key = get_feature_key(sdata)
     lp = sdata["table"].uns["lp"]
 
