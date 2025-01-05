@@ -13,7 +13,7 @@ def lp_data():
         data,
         points_key="transcripts",
         feature_key="feature_name",
-        instance_key="cell_boundaries",
+        cell_key="cell_boundaries",
         shape_keys=["cell_boundaries", "nucleus_boundaries"],
     )
     bt.tl.lp(

@@ -4,16 +4,11 @@ import spatialdata as sd
 import bento as bt
 
 TEST_ZARR = "small_data.zarr"
+""" 6 cells with various mismatched sets of nuclei and organelles """
+
 SIX_CELL_ZARR = "six_cell_data.zarr"
-CELL_TO_NUCLEUS_MAP = {
-    "c0": "",
-    "c1": "n4",
-    "c2": "n6",
-    "c3": "",
-    "c4": "n0",
-    "c5": "",
-}
-NUCLEUS_TO_CELL_MAP = {"n0": "c4", "n4": "c1", "n6": "c2"}
+CELL_TO_NUCLEUS_MAP = {"S-0": "", "S-1": "S-1", "S-2": "S-2", "S-3": "", "S-4": "S-0", "S-5": ""}
+NUCLEUS_TO_CELL_MAP = {"S-0": "S-4", "S-1": "S-1", "S-2": "S-2"}
 
 FLUX_RES = 0.5
 FLUX_RADIUS = 20
@@ -119,7 +114,11 @@ def small_data():
         data,
         points_key="transcripts",
         feature_key="feature_name",
-        instance_key="cell_boundaries",
-        shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        cell_key="cell_boundaries",
+        shape_map={
+            "cell_boundaries": ["nucleus_boundaries", "mitochondria"],
+            "nucleus_boundaries": ["nucleolus"],
+        },
+        map_type="1tomany",
     )
     return data
