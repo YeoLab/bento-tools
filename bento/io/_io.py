@@ -65,11 +65,12 @@ def prep(
         "global": sd.transformations.get_transformation(sdata.points[points_key])
     }
     if "global" in sdata.points[points_key].attrs["transform"]:
+
         # Force points to 2D for Xenium data
         if isinstance(transform["global"], sd.transformations.Scale):
             transform = {
                 "global": sd.transformations.Scale(
-                    scale=transform.to_scale_vector(["x", "y"]), axes=["x", "y"]
+                    scale=transform["global"].to_scale_vector(["x", "y"]), axes=["x", "y"]
                 )
             }
     sdata.points[points_key] = sd.models.PointsModel.parse(
