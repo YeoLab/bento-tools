@@ -1,1 +1,1 @@
-from ._point_features import offset, density, catalog
+from ._point_features import density, edge_distance, centroid_distance, catalog

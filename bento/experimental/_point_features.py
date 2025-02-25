@@ -150,7 +150,8 @@ def catalog(key: str = None):
 # ============================ FEATURE FUNCTIONS ============================
 
 
-def _distance_edge(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
+@catalog(key="tx_edge_distance")
+def _edge_distance(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
     """Calculate mean distance from points to shape edge.
 
     Parameters
@@ -169,8 +170,10 @@ def _distance_edge(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) ->
     return points.distance(shape).mean()
 
 
-@catalog(key="tx_offset")
-def _offset(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
+@catalog(key="tx_centroid_distance")
+def _centroid_distance(
+    points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]
+) -> float:
     """Calculate mean distance from points to shape centroid.
 
     Parameters
@@ -212,8 +215,7 @@ def _density(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float
 # ============================ PUBLIC API WRAPPERS ============================
 
 
-@catalog(key="tx_distance_edge")
-def distance_edge(
+def edge_distance(
     sdata: SpatialData,
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
@@ -228,7 +230,25 @@ def distance_edge(
     sdata : SpatialData
         SpatialData object
     """
-    _offset(
+
+    @catalog(key="tx_edge_distance")
+    def _compute(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
+        points = gpd.GeoSeries.from_xy(points["x"], points["y"])
+        return points.distance(shape).mean()
+
+    _compute(sdata, points_key, shape_key, by_gene, key, num_workers)
+
+
+def centroid_distance(
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    shape_key: str = "cell_boundaries",
+    by_gene: bool = False,
+    key: str = None,
+    num_workers: int = 1,
+) -> None:
+    """Calculate mean distance from points to shape centroid."""
+    _centroid_distance(
         sdata=sdata,
         points_key=points_key,
         shape_key=shape_key,
@@ -238,7 +258,6 @@ def distance_edge(
     )
 
 
-@catalog(key="tx_density")
 def density(
     sdata: SpatialData,
     points_key: str = "transcripts",
