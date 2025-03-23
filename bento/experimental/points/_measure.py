@@ -14,8 +14,8 @@ from tqdm.dask import TqdmCallback
 from bento._utils import get_points, get_feature_key
 
 
-def point_feature(func: Callable) -> Callable:
-    """Internal decorator for point feature functions that handles preprocessing."""
+def _enable_gene_groups(func: Callable) -> Callable:
+    """Enable gene groups for point feature functions."""
 
     @wraps(func)
     def wrapper(
@@ -35,9 +35,9 @@ def point_feature(func: Callable) -> Callable:
     return wrapper
 
 
-def process_point_calculation(
+def _apply_func(
     sdata: SpatialData,
-    calc_func: Callable,
+    func: Callable,
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
     by_gene: bool = False,
@@ -58,15 +58,24 @@ def process_point_calculation(
     else:
         gene_key = None
 
+    point_feature_func = _enable_gene_groups(func)
+
     # Create processing bags
     args = [
         (points_by_shape.get_group(s), shape.iloc[i], gene_key)
         for i, s in enumerate(shape_names)
     ]
-    bags = db.from_sequence(args).map(lambda x: calc_func(*x))
+    bags = db.from_sequence(args).map(lambda x: point_feature_func(*x))
 
+    core_text = "cores" if num_workers > 1 else "core"
     # Compute results with progress bar
-    with TqdmCallback(desc="Processing"), dask.config.set(num_workers=num_workers):
+    with (
+        TqdmCallback(desc=f"Using {num_workers} {core_text}"),
+        dask.config.set(
+            num_workers=num_workers,
+            threads_per_worker=1,
+        ),
+    ):
         result = bags.compute()
 
     if not by_gene:
@@ -77,80 +86,70 @@ def process_point_calculation(
     return result
 
 
-def catalog(key: str = None):
-    """Decorator to register a new point feature calculation.
+def measure(
+    sdata: SpatialData,
+    func: Callable,
+    by_gene: bool = False,
+    points_key: str = "transcripts",
+    shape_key: str = "cell_boundaries",
+    result_key: str = None,
+    num_workers: int = 1,
+) -> pd.DataFrame:
+    """Process points with parallel processing.
 
-    This decorator handles all the boilerplate of:
-    1. Converting points to pandas DataFrame
-    2. Optional gene grouping
-    3. Parallel processing across shapes
-    4. Saving results to the SpatialData object
+    This function applies a function to each shape in the SpatialData object.
 
     Parameters
     ----------
-    key : str, optional
-        Default key to use when storing results. If None, uses the function name.
+    sdata : SpatialData
+        SpatialData object
+    fn : Callable
+        Function to apply to each shape
+    points_key : str, optional
+        Key to use for points
+    shape_key : str, optional
+        Key to use for shapes
+    by_gene : bool, optional
+        Whether to apply the function by gene
+    result_key : str, optional
+        Key to use for results
+    num_workers : int, optional
+        Number of workers to use for parallel processing
 
-    Example
+    Modifies
     -------
-    @register_point_feature(key="my_feature")
-    def my_feature(points, shape):
-        '''Calculate some feature of points within a shape.'''
-        # points is a pandas DataFrame with x,y columns
-        # shape is a Polygon/MultiPolygon
-        return some_calculation(points, shape)
-
-    # Use like other features
-    my_feature(sdata, by_gene=True)
+    sdata : SpatialData
+        SpatialData object with results added to shapes or tables at:
+        - `shapes[shape_key][result_key]` if `by_gene=False`
+        - `tables[result_key]` if `by_gene=True`
     """
 
-    def decorator(func: Callable):
-        feature_key = key or func.__name__
+    # Process calculation
+    result = _apply_func(
+        sdata=sdata,
+        func=func,
+        points_key=points_key,
+        shape_key=shape_key,
+        by_gene=by_gene,
+        num_workers=num_workers,
+    )
 
-        @wraps(func)
-        def wrapper(
-            sdata: SpatialData,
-            points_key: str = "transcripts",
-            shape_key: str = "cell_boundaries",
-            by_gene: bool = False,
-            key: str = None,
-            num_workers: int = 1,
-        ) -> None:
-            # Use provided key or default
-            result_key = key or feature_key
-
-            # Add point_feature decorator
-            decorated_func = point_feature(func)
-
-            # Process calculation
-            result = process_point_calculation(
-                sdata=sdata,
-                calc_func=decorated_func,
-                points_key=points_key,
-                shape_key=shape_key,
-                by_gene=by_gene,
-                num_workers=num_workers,
-            )
-
-            # Save results
-            if not by_gene:
-                sdata.shapes[shape_key][result_key] = result
-            else:
-                sdata.tables[result_key] = AnnData(
-                    result,
-                    obs=pd.DataFrame(index=result.index),
-                    var=pd.DataFrame(index=result.columns),
-                )
-
-        return wrapper
-
-    return decorator
+    # Save results
+    if not by_gene:
+        sdata.shapes[shape_key][result_key] = result
+        print(f"Saved to: sdata['{shape_key}']['{result_key}']")
+    else:
+        sdata.tables[result_key] = AnnData(
+            result,
+            obs=pd.DataFrame(index=result.index),
+            var=pd.DataFrame(index=result.columns),
+        )
+        print(f"Saved to: sdata['{result_key}']")
 
 
 # ============================ FEATURE FUNCTIONS ============================
 
 
-@catalog(key="tx_edge_distance")
 def _edge_distance(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
     """Calculate mean distance from points to shape edge.
 
@@ -170,7 +169,6 @@ def _edge_distance(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) ->
     return points.distance(shape).mean()
 
 
-@catalog(key="tx_centroid_distance")
 def _centroid_distance(
     points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]
 ) -> float:
@@ -193,7 +191,6 @@ def _centroid_distance(
     return points.distance(centroid).mean()
 
 
-@catalog(key="tx_density")
 def _density(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
     """Calculate density of points within shape.
 
@@ -220,7 +217,7 @@ def edge_distance(
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
     by_gene: bool = False,
-    key: str = None,
+    result_key: str = "tx_cell_edge_dist",
     num_workers: int = 1,
 ) -> None:
     """Calculate mean distance from points to shape edge.
@@ -231,12 +228,15 @@ def edge_distance(
         SpatialData object
     """
 
-    @catalog(key="tx_edge_distance")
-    def _compute(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
-        points = gpd.GeoSeries.from_xy(points["x"], points["y"])
-        return points.distance(shape).mean()
-
-    _compute(sdata, points_key, shape_key, by_gene, key, num_workers)
+    measure(
+        sdata=sdata,
+        func=_edge_distance,
+        points_key=points_key,
+        shape_key=shape_key,
+        by_gene=by_gene,
+        result_key=result_key,
+        num_workers=num_workers,
+    )
 
 
 def centroid_distance(
@@ -244,16 +244,18 @@ def centroid_distance(
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
     by_gene: bool = False,
-    key: str = None,
+    result_key: str = "tx_cell_centroid_dist",
     num_workers: int = 1,
 ) -> None:
     """Calculate mean distance from points to shape centroid."""
-    _centroid_distance(
+
+    measure(
         sdata=sdata,
+        func=_centroid_distance,
         points_key=points_key,
         shape_key=shape_key,
         by_gene=by_gene,
-        key=key,
+        result_key=result_key,
         num_workers=num_workers,
     )
 
@@ -263,7 +265,7 @@ def density(
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
     by_gene: bool = False,
-    key: str = None,
+    result_key: str = "tx_cell_density",
     num_workers: int = 1,
 ) -> None:
     """Calculate density of points within shape.
@@ -273,11 +275,12 @@ def density(
     sdata : SpatialData
         SpatialData object
     """
-    _density(
+    measure(
         sdata=sdata,
+        func=_density,
         points_key=points_key,
         shape_key=shape_key,
         by_gene=by_gene,
-        key=key,
+        result_key=result_key,
         num_workers=num_workers,
     )
