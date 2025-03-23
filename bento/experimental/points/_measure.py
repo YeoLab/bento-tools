@@ -103,7 +103,7 @@ def measure(
     ----------
     sdata : SpatialData
         SpatialData object
-    fn : Callable
+    func : Callable
         Function to apply to each shape
     points_key : str, optional
         Key to use for points
@@ -209,6 +209,83 @@ def _density(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float
     return len(points) / shape.area
 
 
+def _span(shape: Union[Polygon, MultiPolygon]) -> float:
+    """Calculate maximum diameter of shape."""
+    if not shape:
+        return np.nan
+
+    shape_coo = np.array(shape.exterior.coords.xy).T
+    return distance_matrix(shape_coo, shape_coo).max()
+
+
+def _ripley(
+    points: pd.DataFrame,
+    shape: Union[Polygon, MultiPolygon],
+) -> dict:
+    """Calculate Ripley's L-function statistics for point patterns."""
+    if not shape or len(points) < 2:
+        return {
+            "l_max": np.nan,
+            "l_max_gradient": np.nan,
+            "l_min_gradient": np.nan,
+            "l_monotony": np.nan,
+            "l_half_radius": np.nan,
+        }
+
+    # Get cell properties
+    cell_span = _span(shape)
+    cell_minx, cell_miny, cell_maxx, cell_maxy = shape.bounds
+    cell_area = shape.area
+
+    estimator = RipleysKEstimator(
+        area=cell_area,
+        x_min=cell_minx,
+        y_min=cell_miny,
+        x_max=cell_maxx,
+        y_max=cell_maxy,
+    )
+
+    quarter_span = cell_span / 4
+    radii = np.linspace(1, quarter_span * 2, num=int(quarter_span * 2))
+
+    # Get points coordinates
+    points_geo = np.array([points.geometry.x, points.geometry.y]).T
+
+    # Compute ripley function stats
+    stats = estimator.Hfunction(data=points_geo, radii=radii, mode="none")
+
+    # Max value of the L-function
+    l_max = max(stats)
+
+    # Max and min value of the gradient of L
+    ripley_smooth = pd.Series(stats).rolling(5).mean()
+    ripley_smooth.dropna(inplace=True)
+
+    # Can't take gradient of single number
+    if len(ripley_smooth) < 2:
+        ripley_smooth = np.array([0, 0])
+
+    ripley_gradient = np.gradient(ripley_smooth)
+    l_max_gradient = ripley_gradient.max()
+    l_min_gradient = ripley_gradient.min()
+
+    # Monotony of L-function in the interval
+    l_monotony = spearmanr(radii, stats)[0]
+
+    # L-function at L/4 where length of the cell L is max dist between 2 points on polygon defining cell border
+    l_half_radius = estimator.Hfunction(
+        data=points_geo, radii=[quarter_span], mode="none"
+    )[0]
+
+    return {
+        "l_max": l_max,
+        "l_max_gradient": l_max_gradient,
+        "l_min_gradient": l_min_gradient,
+        "l_monotony": l_monotony,
+        "l_half_radius": l_half_radius,
+    }
+
+
 # ============================ PUBLIC API WRAPPERS ============================
 
 
@@ -281,6 +358,61 @@ def density(
         points_key=points_key,
         shape_key=shape_key,
         by_gene=by_gene,
+        result_key=result_key,
+        num_workers=num_workers,
+    )
+
+
+from scipy.stats import spearmanr
+import numpy as np
+from astropy.stats import RipleysKEstimator
+from scipy.spatial import distance_matrix
+
+
+def ripley(
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    shape_key: str = "cell_boundaries",
+    by_gene: bool = False,
+    result_key: str = "tx_ripley_stats",
+    num_workers: int = 1,
+) -> None:
+    """Calculate Ripley's L-function statistics for point patterns.
+
+    The L-function is evaluated at r=[1,d], where d is half the cell's maximum diameter.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        SpatialData object
+    points_key : str, optional
+        Key for points in sdata.points, by default "transcripts"
+    shape_key : str, optional
+        Key for shapes in sdata.shapes, by default "cell_boundaries"
+    by_gene : bool, optional
+        Whether to calculate statistics per gene, by default False
+    result_key : str, optional
+        Key for results, by default "tx_ripley_stats"
+    num_workers : int, optional
+        Number of workers for parallel processing, by default 1
+
+    Modifies
+    -------
+    sdata : SpatialData
+        Adds the following metrics to shapes:
+        - l_max: Maximum value of L-function
+        - l_max_gradient: Maximum gradient of L-function
+        - l_min_gradient: Minimum gradient of L-function
+        - l_monotony: Spearman correlation between L-function and radius
+        - l_half_radius: L-function value at quarter cell diameter
+    """
+    gene_key = "gene" if by_gene else None
+    measure(
+        sdata=sdata,
+        func=_ripley,
+        points_key=points_key,
+        shape_key=shape_key,
+        gene_key=gene_key,
         result_key=result_key,
         num_workers=num_workers,
     )
