@@ -110,7 +110,7 @@ def get_points(
     if astype == "pandas":
         return points.compute()
     elif astype == "dask":
-        return points
+        return points.persist()
     elif astype == "geopandas":
         points = points.compute()
         return gpd.GeoDataFrame(

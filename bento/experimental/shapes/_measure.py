@@ -6,35 +6,16 @@ from typing import Callable, List, Union
 
 import dask.bag as db
 import dask.config
+import emoji
 import numpy as np
 import pandas as pd
 from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Polygon, MultiPolygon, Point
 from spatialdata import SpatialData
 from tqdm.dask import TqdmCallback
-
+from numba import njit
 from bento._utils import get_shape
-
-
-def _apply_func(
-    sdata: SpatialData,
-    func: Callable,
-    shape_key: str,
-    num_workers: int = 1,
-) -> pd.Series:
-    """Internal function to process shape calculations with parallel processing."""
-    # Get shape data
-    shapes = get_shape(sdata, shape_key, sync=False).geometry
-    shape_names = shapes.index.tolist()
-
-    # Create processing bags
-    bags = db.from_sequence(shapes).map(func)
-
-    # Compute results with progress bar
-    with TqdmCallback(desc="Processing"), dask.config.set(num_workers=num_workers):
-        result = bags.compute()
-
-    return pd.Series(result, index=shape_names)
+from bento._logging import logger
 
 
 def measure(
@@ -42,7 +23,10 @@ def measure(
     func: Callable,
     shape_key: str,
     result_keys: Union[str, List[str]],
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Process shapes with parallel processing.
 
@@ -56,7 +40,7 @@ def measure(
         Key to use for shapes
     result_keys : str or list of str
         Key(s) to use for results
-    num_workers : int, optional
+    n_jobs : int, optional
         Number of workers to use for parallel processing
 
     Modifies
@@ -65,19 +49,33 @@ def measure(
         SpatialData object with results added to shapes at:
         - `shapes[shape_key][result_key]`
     """
-    # Process calculation
-    result = _apply_func(
-        sdata=sdata,
-        func=func,
-        shape_key=shape_key,
-        num_workers=num_workers,
-    )
+    if not recompute and all(k in sdata.shapes[shape_key].columns for k in result_keys):
+        logger.info(
+            f"Skipping, recompute is False. {result_keys} exists in sdata.shapes[{shape_key}]"
+        )
+        return
 
+    # Process calculation
+    shapes = get_shape(sdata, shape_key, sync=False).geometry
+    shape_names = shapes.index.tolist()
+
+    shape_coords = np.array(shapes.apply(lambda x: np.array(x.exterior.xy)))
+
+    # Create processing bagsf
+    bags = db.from_sequence(shape_coords).map(func)
+
+    # Compute results with progress bar
+    dask.config.set(num_workers=n_jobs)
+    if progress:
+        with TqdmCallback(desc=emoji.emojize(":hourglass_not_done:"), leave=leave):
+            result = bags.compute()
+    else:
+        result = bags.compute()
+
+    result = pd.DataFrame(result, index=shape_names)
     # Save results
     sdata.shapes[shape_key][result_keys] = result
-    print(f"""Saved to: sdata['{shape_key}']
-          column(s): {result_keys}
-          """)
+    logger.info(f"`{result_keys}` saved to: sdata['{shape_key}']")
 
 
 # ============================ FEATURE FUNCTIONS ============================
@@ -103,14 +101,19 @@ def _aspect_ratio(shape: Union[Polygon, MultiPolygon]) -> float:
     return length / width
 
 
-def _radius(shape: Union[Polygon, MultiPolygon]) -> float:
+@njit
+def _radius(coords: np.ndarray) -> float:
     """Calculate average radius of shape."""
-    if not shape:
+    if coords.size == 0:
         return np.nan
 
-    return distance.cdist(
-        np.array(shape.centroid.coords).reshape(1, 2), np.array(shape.exterior.xy).T
-    ).mean()
+    # Calculate centroid from coordinates
+    centroid_x = np.mean(coords[0])
+    centroid_y = np.mean(coords[1])
+    
+    # Calculate distances manually for numba compatibility
+    distances = np.sqrt((coords[0] - centroid_x)**2 + (coords[1] - centroid_y)**2)
+    return np.mean(distances)
 
 
 def _span(shape: Union[Polygon, MultiPolygon]) -> float:
@@ -169,11 +172,11 @@ def _bounds(shape: Union[Polygon, MultiPolygon]) -> tuple[float, float, float, f
     return shape.bounds
 
 
-def _centroid(shape: Union[Polygon, MultiPolygon]) -> Point:
+def _centroid(shape: Union[Polygon, MultiPolygon]) -> tuple[float, float]:
     """Calculate centroid of shape."""
     if not shape:
-        return None
-    return shape.centroid
+        return (np.nan, np.nan)
+    return shape.centroid.xy
 
 
 # ============================ PUBLIC API WRAPPERS ============================
@@ -183,7 +186,10 @@ def aspect_ratio(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_key: str = "aspect_ratio",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate aspect ratio of minimum rotated rectangle containing each shape."""
     measure(
@@ -191,7 +197,10 @@ def aspect_ratio(
         func=_aspect_ratio,
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -199,7 +208,10 @@ def radius(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_key: str = "radius",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate average radius of each shape."""
     measure(
@@ -207,7 +219,10 @@ def radius(
         func=_radius,
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -215,7 +230,10 @@ def span(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_key: str = "span",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate maximum diameter of each shape."""
     measure(
@@ -223,7 +241,10 @@ def span(
         func=_span,
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -231,7 +252,10 @@ def second_moment(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_key: str = "second_moment",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate second moment of each shape relative to its centroid."""
     measure(
@@ -239,7 +263,10 @@ def second_moment(
         func=_second_moment,
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -248,7 +275,10 @@ def opening(
     shape_key: str = "cell_boundaries",
     proportion: float = 0.1,
     result_key: str = "opened_shape",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Compute morphological opening of each shape."""
     measure(
@@ -256,7 +286,10 @@ def opening(
         func=lambda s: _opening(s, proportion),
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -264,7 +297,10 @@ def area(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_key: str = "area",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate area of each shape."""
     measure(
@@ -272,7 +308,10 @@ def area(
         func=_area,
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -280,7 +319,10 @@ def perimeter(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_key: str = "perimeter",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate perimeter length of each shape."""
     measure(
@@ -288,7 +330,10 @@ def perimeter(
         func=_perimeter,
         shape_key=shape_key,
         result_keys=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -296,7 +341,10 @@ def bounds(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_keys: List[str] = ["xmin", "ymin", "xmax", "ymax"],
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate bounding box coordinates of each shape."""
     measure(
@@ -304,7 +352,10 @@ def bounds(
         func=_bounds,
         shape_key=shape_key,
         result_keys=result_keys,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -312,7 +363,10 @@ def centroid(
     sdata: SpatialData,
     shape_key: str = "cell_boundaries",
     result_keys: List[str] = ["x", "y"],
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate centroid of each shape."""
     measure(
@@ -320,5 +374,8 @@ def centroid(
         func=_centroid,
         shape_key=shape_key,
         result_keys=result_keys,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )

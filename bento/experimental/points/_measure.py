@@ -1,17 +1,30 @@
 from functools import wraps
-from typing import Callable, Union
+from typing import Callable, Union, List
 
+import spatialdata as sd
 import dask
 import dask.bag as db
 import dask.dataframe as dd
-import geopandas as gpd
+import emoji
+import numpy as np
 import pandas as pd
 from anndata import AnnData
-from shapely.geometry import Polygon, MultiPolygon
+from scipy.sparse import csr_matrix
+from shapely.geometry import MultiPolygon, Polygon
 from spatialdata import SpatialData
-from tqdm.dask import TqdmCallback
+from tqdm.auto import tqdm
 
-from bento._utils import get_points, get_feature_key
+from bento._utils import get_feature_key, get_points
+from bento._logging import logger
+
+from .. import shapes as shp
+
+from ._distance import _distances
+from ._polarity import _polarity
+from ._density import _density
+from ._moments import _hu_moments
+from ._ripley import _ripley
+from ._ripley import _morans_i
 
 
 def _enable_gene_groups(func: Callable) -> Callable:
@@ -19,321 +32,274 @@ def _enable_gene_groups(func: Callable) -> Callable:
 
     @wraps(func)
     def wrapper(
-        points: dd.DataFrame,
-        shape: Union[Polygon, MultiPolygon],
+        points: pd.DataFrame,
         gene_key: str = None,
+        shape: Union[Polygon, MultiPolygon] = None,
+        **kwargs,
     ) -> dict:
-        points = points.compute()  # Convert from dask to pandas
         if gene_key:
             result = points.groupby(gene_key, observed=True).apply(
-                lambda x: func(x, shape)
+                lambda x: func(x, shape=shape, **kwargs)
             )
         else:
-            result = func(points, shape)
+            result = func(points, shape=shape, **kwargs)
         return result
 
     return wrapper
 
 
-def _apply_func(
-    sdata: SpatialData,
-    func: Callable,
-    points_key: str = "transcripts",
-    shape_key: str = "cell_boundaries",
-    by_gene: bool = False,
-    num_workers: int = 1,
-) -> pd.DataFrame:
-    """Internal function to process point calculations with parallel processing."""
-    # Get points data
-    points = get_points(sdata, points_key=points_key, astype="dask", sync=True)
-
-    # Get shape data
-    shape = sdata.shapes[shape_key].sort_index().geometry
-    shape_names = shape.index.tolist()
-
-    points_by_shape = points.groupby(shape_key)
-
-    if by_gene:
-        gene_key = get_feature_key(sdata)
-    else:
-        gene_key = None
-
-    point_feature_func = _enable_gene_groups(func)
-
-    # Create processing bags
-    args = [
-        (points_by_shape.get_group(s), shape.iloc[i], gene_key)
-        for i, s in enumerate(shape_names)
-    ]
-    bags = db.from_sequence(args).map(lambda x: point_feature_func(*x))
-
-    core_text = "cores" if num_workers > 1 else "core"
-    # Compute results with progress bar
-    with (
-        TqdmCallback(desc=f"Using {num_workers} {core_text}"),
-        dask.config.set(
-            num_workers=num_workers,
-            threads_per_worker=1,
-        ),
-    ):
-        result = bags.compute()
-
-    if not by_gene:
-        result = pd.Series(result, index=shape_names)
-    else:
-        result = pd.DataFrame(result, index=shape_names)
-
-    return result
-
-
 def measure(
     sdata: SpatialData,
     func: Callable,
-    by_gene: bool = False,
-    points_key: str = "transcripts",
-    shape_key: str = "cell_boundaries",
+    points_key: str,
+    shape_key: str,
+    feature_key: str,
+    shape_measure_keys: List[str] = None,
     result_key: str = None,
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> pd.DataFrame:
-    """Process points with parallel processing.
-
-    This function applies a function to each shape in the SpatialData object.
+    """Process point calculations with parallel processing.
 
     Parameters
     ----------
     sdata : SpatialData
         SpatialData object
     func : Callable
-        Function to apply to each shape
-    points_key : str, optional
+        Function to apply to points in shapes
+    points_key : str
         Key to use for points
-    shape_key : str, optional
+    shape_key : str
         Key to use for shapes
-    by_gene : bool, optional
-        Whether to apply the function by gene
+    shape_measure_keys : List[str]
+        Keys to query for shape measurements
+    feature_key : str
+        Key to use for features
     result_key : str, optional
         Key to use for results
-    num_workers : int, optional
-        Number of workers to use for parallel processing
+    n_jobs : int, optional
+        Number of jobs to use for parallel processing
+    recompute : bool, optional
+        Whether to recompute the result
+    progress : bool, optional
+        Whether to show a progress bar
+    leave : bool, optional
+        Whether to leave the progress bar open
 
     Modifies
     -------
-    sdata : SpatialData
-        SpatialData object with results added to shapes or tables at:
-        - `shapes[shape_key][result_key]` if `by_gene=False`
-        - `tables[result_key]` if `by_gene=True`
+    sdata : SpatialData object with results added to:
+        - `tables[result_key]` <n_labels, n_channels> with each metric stored as a layer
     """
-
-    # Process calculation
-    result = _apply_func(
-        sdata=sdata,
-        func=func,
-        points_key=points_key,
-        shape_key=shape_key,
-        by_gene=by_gene,
-        num_workers=num_workers,
-    )
-
-    # Save results
-    if not by_gene:
-        sdata.shapes[shape_key][result_key] = result
-        print(f"Saved to: sdata['{shape_key}']['{result_key}']")
-    else:
-        sdata.tables[result_key] = AnnData(
-            result,
-            obs=pd.DataFrame(index=result.index),
-            var=pd.DataFrame(index=result.columns),
+    if not recompute and result_key in sdata.tables:
+        logger.info(
+            f"Skipping, recompute is False. {result_key} exists in sdata.tables[{result_key}]"
         )
-        print(f"Saved to: sdata['{result_key}']")
+        return
+
+    # Get points data
+    points = get_points(sdata, points_key=points_key, astype="dask", sync=True)
+
+    # Pre-compute groups for faster access
+    points = points[
+        ["x", "y", shape_key, feature_key]
+    ].compute()  # Convert to pandas for faster group operations
+    points_by_shape = points.groupby(shape_key)
+    group_indices = points_by_shape.indices
+    shape_names = list(group_indices.keys())
+
+    # Get shape data
+    if shape_measure_keys:
+        shape_data = (
+            sdata.shapes[shape_key]
+            .loc[shape_names, ["geometry", *shape_measure_keys]]
+            .values
+        )
+    else:
+        shape_data = sdata.shapes[shape_key].loc[shape_names, ["geometry"]].values
+
+    point_feature_func = _enable_gene_groups(func)
+
+    # Process shapes in batches to reduce memory usage
+    batch_size = min(len(shape_names), 5000)
+    partition_size = min(100, batch_size // (3 * n_jobs))
+    results = []
+
+    core_text = "cores" if n_jobs > 1 else "core"
+    logger.info(f"Computing with {n_jobs} {core_text} in batches of {batch_size}")
+
+    # Process in batches and stream results
+    dask.config.set(num_workers=n_jobs, threads_per_worker=1)
+    valid_shape_names = []
+    if progress:
+        pbar = tqdm(
+            total=len(shape_names),
+            desc=emoji.emojize(":hourglass_not_done:"),
+            leave=leave,
+        )
+    for i in range(0, len(shape_names), batch_size):
+        batch_names = shape_names[i : i + batch_size]
+        batch_points = [points.iloc[group_indices[s]] for s in batch_names]
+        batch_shape_data = shape_data[i : i + batch_size]
+
+        # Create processing bags for this batch only using direct indexing
+        batch_args = []
+        for i, s in enumerate(batch_names):
+            try:
+                # Get all required shape measurements
+                shape_measurements = batch_shape_data[i]
+                # First element is always the geometry
+                shape = shape_measurements[0]
+                # Remaining elements are the measurements
+                measurements = shape_measurements[1:]
+                batch_args.append((batch_points[i], feature_key, shape, *measurements))
+                valid_shape_names.append(batch_names[i])
+            except KeyError:
+                # Shape not in shapes
+                logger.debug(f"Shape {s} has no points")
+                continue
+        # Process this batch
+        batch_bags = db.from_sequence(batch_args, partition_size=partition_size).map(
+            lambda x: point_feature_func(
+                x[0], x[1], shape=x[2], **dict(zip(shape_measure_keys, x[3:]))
+            )
+        )
+        batch_results = batch_bags.compute()
+        results.extend(batch_results)
+        pbar.update(len(batch_names)) if progress else None
+
+    pbar.close() if progress else None
+    pbar.set_description(f"{emoji.emojize(':bento:')} Done.") if progress else None
+    logger.debug("Compiling results")
+    for i, r in enumerate(results):
+        cell_result = pd.DataFrame.from_records(r.values)
+        cell_result[feature_key] = r.index.tolist()
+        cell_result[shape_key] = valid_shape_names[i]
+        results[i] = cell_result
+    results = pd.concat(results) if len(results) > 0 else results
+
+    var_names = list(results[feature_key].unique())
+
+    # Reshape results, one df per metric with labels as index and channels as columns
+    result_layers = {}
+    metrics = results.columns.drop([feature_key, shape_key])
+    for metric in metrics:
+        result_layers[metric] = results.pivot(
+            index=shape_key, columns=feature_key, values=metric
+        )
+
+        # Add nan for invalid shapes
+        result_layers[metric] = (
+            result_layers[metric].reindex(shape_names).fillna(np.nan)
+        )
+
+    if result_key in sdata:
+        sdata[result_key].layers = result_layers
+    else:
+        empty_x = csr_matrix(np.zeros_like(result_layers[metrics[0]]))
+        # Set row and column names to match the dataframe
+        table = AnnData(X=empty_x, layers=result_layers)
+        table.obs_names = shape_names
+        table.var_names = var_names
+        table.obs["region"] = shape_key
+        table.obs["instance"] = table.obs.index
+        sdata[result_key] = sd.models.TableModel.parse(table)
+        sdata.set_table_annotates_spatialelement(
+            result_key, shape_key, region_key="region", instance_key="instance"
+        )
+    logger.info(f"Saved to: sdata['{result_key}']")
 
 
-# ============================ FEATURE FUNCTIONS ============================
-
-
-def _edge_distance(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
-    """Calculate mean distance from points to shape edge.
-
-    Parameters
-    ----------
-    points : pd.DataFrame
-        Points with x,y coordinates
-    shape : Union[Polygon, MultiPolygon]
-        Shape to calculate distance to
-
-    Returns
-    -------
-    float
-        Mean distance from points to shape edge
-    """
-    points = gpd.GeoSeries.from_xy(points["x"], points["y"])
-    return points.distance(shape).mean()
-
-
-def _centroid_distance(
-    points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]
-) -> float:
-    """Calculate mean distance from points to shape centroid.
-
-    Parameters
-    ----------
-    points : pd.DataFrame
-        Points with x,y coordinates
-    shape : Union[Polygon, MultiPolygon]
-        Shape to calculate offset from
-
-    Returns
-    -------
-    float
-        Mean distance from points to shape centroid
-    """
-    points = gpd.GeoSeries.from_xy(points["x"], points["y"])
-    centroid = shape.centroid
-    return points.distance(centroid).mean()
-
-
-def _density(points: pd.DataFrame, shape: Union[Polygon, MultiPolygon]) -> float:
-    """Calculate density of points within shape.
-
-    Parameters
-    ----------
-    points : pd.DataFrame
-        Points with x,y coordinates
-    shape : Union[Polygon, MultiPolygon]
-        Shape to calculate density within
-
-    Returns
-    -------
-    float
-        Number of points divided by shape area
-    """
-    return len(points) / shape.area
-
-
-def _span(shape: Union[Polygon, MultiPolygon]) -> float:
-    """Calculate maximum diameter of shape."""
-    if not shape:
-        return np.nan
-
-    shape_coo = np.array(shape.exterior.coords.xy).T
-    return distance_matrix(shape_coo, shape_coo).max()
-
-
-def _ripley(
-    points: pd.DataFrame,
-    shape: Union[Polygon, MultiPolygon],
-) -> dict:
-    """Calculate Ripley's L-function statistics for point patterns."""
-    if not shape or len(points) < 2:
-        return {
-            "l_max": np.nan,
-            "l_max_gradient": np.nan,
-            "l_min_gradient": np.nan,
-            "l_monotony": np.nan,
-            "l_half_radius": np.nan,
-        }
-
-    # Get cell properties
-    cell_span = _span(shape)
-    cell_minx, cell_miny, cell_maxx, cell_maxy = shape.bounds
-    cell_area = shape.area
-
-    estimator = RipleysKEstimator(
-        area=cell_area,
-        x_min=cell_minx,
-        y_min=cell_miny,
-        x_max=cell_maxx,
-        y_max=cell_maxy,
-    )
-
-    quarter_span = cell_span / 4
-    radii = np.linspace(1, quarter_span * 2, num=int(quarter_span * 2))
-
-    # Get points coordinates
-    points_geo = np.array([points.geometry.x, points.geometry.y]).T
-
-    # Compute ripley function stats
-    stats = estimator.Hfunction(data=points_geo, radii=radii, mode="none")
-
-    # Max value of the L-function
-    l_max = max(stats)
-
-    # Max and min value of the gradient of L
-    ripley_smooth = pd.Series(stats).rolling(5).mean()
-    ripley_smooth.dropna(inplace=True)
-
-    # Can't take gradient of single number
-    if len(ripley_smooth) < 2:
-        ripley_smooth = np.array([0, 0])
-
-    ripley_gradient = np.gradient(ripley_smooth)
-    l_max_gradient = ripley_gradient.max()
-    l_min_gradient = ripley_gradient.min()
-
-    # Monotony of L-function in the interval
-    l_monotony = spearmanr(radii, stats)[0]
-
-    # L-function at L/4 where length of the cell L is max dist between 2 points on polygon defining cell border
-    l_half_radius = estimator.Hfunction(
-        data=points_geo, radii=[quarter_span], mode="none"
-    )[0]
-
-    return {
-        "l_max": l_max,
-        "l_max_gradient": l_max_gradient,
-        "l_min_gradient": l_min_gradient,
-        "l_monotony": l_monotony,
-        "l_half_radius": l_half_radius,
-    }
-
-
-# ============================ PUBLIC API WRAPPERS ============================
-
-
-def edge_distance(
+def distance(
     sdata: SpatialData,
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
-    by_gene: bool = False,
-    result_key: str = "tx_cell_edge_dist",
-    num_workers: int = 1,
+    feature_key: str = "feature_name",
+    result_key: str = "tx_distance",
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
-    """Calculate mean distance from points to shape edge.
+    """Calculate distance stats from points to shape.
 
     Parameters
     ----------
     sdata : SpatialData
         SpatialData object
     """
+    shp.radius(
+        sdata,
+        shape_key=shape_key,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=False,
+        leave=False,
+    )
 
     measure(
         sdata=sdata,
-        func=_edge_distance,
+        func=_distances,
         points_key=points_key,
         shape_key=shape_key,
-        by_gene=by_gene,
+        shape_measure_keys=["radius"],
+        feature_key=feature_key,
         result_key=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
-def centroid_distance(
+def polarity(
     sdata: SpatialData,
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
-    by_gene: bool = False,
-    result_key: str = "tx_cell_centroid_dist",
-    num_workers: int = 1,
+    feature_key: str = "feature_name",
+    result_key: str = "tx_polarity",
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
-    """Calculate mean distance from points to shape centroid."""
+    """Calculate polarity of points within shape.
 
+    Parameters
+    ----------
+    sdata : SpatialData
+        SpatialData object
+    """
+    shp.centroid(
+        sdata,
+        shape_key=shape_key,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=False,
+        leave=False,
+    )
+    shp.radius(
+        sdata,
+        shape_key=shape_key,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=False,
+        leave=False,
+    )
     measure(
         sdata=sdata,
-        func=_centroid_distance,
+        func=_polarity,
         points_key=points_key,
         shape_key=shape_key,
-        by_gene=by_gene,
+        shape_measure_keys=["radius", "x", "y"],
+        feature_key=feature_key,
         result_key=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
@@ -341,9 +307,12 @@ def density(
     sdata: SpatialData,
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
-    by_gene: bool = False,
-    result_key: str = "tx_cell_density",
-    num_workers: int = 1,
+    feature_key: str = "feature_name",
+    result_key: str = "tx_density",
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate density of points within shape.
 
@@ -352,30 +321,122 @@ def density(
     sdata : SpatialData
         SpatialData object
     """
+
     measure(
         sdata=sdata,
         func=_density,
         points_key=points_key,
         shape_key=shape_key,
-        by_gene=by_gene,
+        feature_key=feature_key,
         result_key=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )
 
 
-from scipy.stats import spearmanr
-import numpy as np
-from astropy.stats import RipleysKEstimator
-from scipy.spatial import distance_matrix
+def moments(
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    shape_key: str = "cell_boundaries",
+    feature_key: str = "feature_name",
+    result_key: str = "tx_moments",
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
+) -> None:
+    """Calculate relative hu moments of points to shape.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        SpatialData object
+    """
+    shp.centroid(
+        sdata,
+        shape_key=shape_key,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=False,
+        leave=False,
+    )
+    measure(
+        sdata=sdata,
+        func=_hu_moments,
+        points_key=points_key,
+        shape_key=shape_key,
+        shape_measure_keys=["x", "y"],
+        feature_key=feature_key,
+        result_key=result_key,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
+    )
+
+
+def morans_i(
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    shape_key: str = "cell_boundaries",
+    feature_key: str = "feature_name",
+    result_key: str = "tx_morans_i",
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
+) -> None:
+    """Calculate Moran's I for points within shape.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        SpatialData object
+    points_key : str, optional
+        Key for points in sdata.points, by default "transcripts"
+    shape_key : str, optional
+        Key for shapes in sdata.shapes, by default "cell_boundaries"
+    feature_key : str, optional
+        Key for features in sdata.features, by default "feature_name"
+    result_key : str, optional
+        Key for results, by default "tx_morans_i"
+    n_jobs : int, optional
+        Number of workers for parallel processing, by default 1
+
+    Modifies
+    -------
+    sdata : SpatialData
+        Adds the following metrics to shapes:
+        - morans_i: Moran's I statistic
+        - morans_p: P-value for Moran's I statistic
+        - morans_z: Z-score for Moran's I statistic
+    """
+    measure(
+        sdata=sdata,
+        func=_morans_i,
+        points_key=points_key,
+        shape_key=shape_key,
+        feature_key=feature_key,
+        result_key=result_key,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
+    )
 
 
 def ripley(
     sdata: SpatialData,
     points_key: str = "transcripts",
     shape_key: str = "cell_boundaries",
-    by_gene: bool = False,
+    feature_key: str = "feature_name",
     result_key: str = "tx_ripley_stats",
-    num_workers: int = 1,
+    n_jobs: int = 1,
+    recompute: bool = True,
+    progress: bool = True,
+    leave: bool = True,
 ) -> None:
     """Calculate Ripley's L-function statistics for point patterns.
 
@@ -393,7 +454,7 @@ def ripley(
         Whether to calculate statistics per gene, by default False
     result_key : str, optional
         Key for results, by default "tx_ripley_stats"
-    num_workers : int, optional
+    n_jobs : int, optional
         Number of workers for parallel processing, by default 1
 
     Modifies
@@ -406,13 +467,15 @@ def ripley(
         - l_monotony: Spearman correlation between L-function and radius
         - l_half_radius: L-function value at quarter cell diameter
     """
-    gene_key = "gene" if by_gene else None
     measure(
         sdata=sdata,
         func=_ripley,
         points_key=points_key,
         shape_key=shape_key,
-        gene_key=gene_key,
+        feature_key=feature_key,
         result_key=result_key,
-        num_workers=num_workers,
+        n_jobs=n_jobs,
+        recompute=recompute,
+        progress=progress,
+        leave=leave,
     )

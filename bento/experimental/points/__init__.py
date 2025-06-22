@@ -1,1 +1,2 @@
-from ._measure import density, edge_distance, centroid_distance, measure
+from ._measure import measure, distance, polarity, density, moments, ripley, morans_i
+from ._cluster import cluster
