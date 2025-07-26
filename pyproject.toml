@@ -27,6 +27,7 @@ dependencies = [
     "scikit-learn>1.0.1,<1.6.0",
     "ipywidgets>=8.1.5",
     "tomli>=2.2.1",
+    "polars>=1.31.0",
 ]
 license = "BSD-2-Clause"
 readme = "README.md"
@@ -49,7 +50,7 @@ all = ["bento-tools[docs]", "bento-tools[extras]"]
 requires = ["hatchling==1.26.3"]
 build-backend = "hatchling.build"
 
-[tool.rye]
+[tool.uv]
 managed = true
 version.source = "pyproject"
 dev-dependencies = [
@@ -58,6 +59,19 @@ dev-dependencies = [
     "pytest-watcher>=0.4.2",
     "pytest-mock>=3.14.0",
 ]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning:bento.*",
+    "ignore::FutureWarning:dask.*",
+    "ignore::UserWarning:xarray_schema.*",
+    "ignore::UserWarning:spatialdata.*",
+    "ignore::FutureWarning:spatialdata.*",
+    "ignore::DeprecationWarning:spatialdata.*",
+]
+
 
 [tool.hatch.build]
 include = [

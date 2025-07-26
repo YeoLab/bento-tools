@@ -1,41 +1,62 @@
-from typing import Union
-import numpy as np
 import pandas as pd
-from shapely.geometry import MultiPolygon, Polygon
-from scipy.spatial import distance
+import geopandas as gpd
 
 
-def _polarity(
-    points: pd.DataFrame,
-    shape: Union[Polygon, MultiPolygon],
-    radius: float,
-    x: float,
-    y: float,
-) -> float:
-    """Calculate relative displacement of points within shape using center of mass.
+def compute_polarity(
+    points: gpd.GeoDataFrame,
+    shapes: gpd.GeoDataFrame,
+    shape_radii: pd.Series,
+    shape_key: str,
+    feature_key: str,
+) -> pd.DataFrame:
+    """
+    Compute polarity values for each feature-shape combination using vectorized operations.
+
+    Polarity measures the displacement of the center of mass from the shape centroid,
+    normalized by the shape radius.
 
     Parameters
     ----------
-    points : pd.DataFrame
-        Points with x,y coordinates
-    shape : Union[Polygon, MultiPolygon]
-        Shape to calculate polarity within
-    radius : float
-        Radius of shape
-    x : float
-        shape centroid x
-    y : float
-        shape centroid y
+    points : gpd.GeoSeries
+        GeoSeries with point geometries
+    shapes : gpd.GeoDataFrame
+        GeoDataFrame with shape geometries
+    shape_radii : pd.Series
+        Series of radii for shapes
+    shape_key : str
+        Key for shapes
+    feature_key : str
+        Key for features
 
     Returns
     -------
-    dict
-        dist: Distance from points to shape center of mass normalized by the shape radius
-    """
-    if not shape or not radius or not x or not y:
-        return {"polarity": np.nan}
+    polarity : DataFrame
+        DataFrame with shape_key, feature_key, and polarity
 
-    points = points[["x", "y"]].values
-    points_com = np.mean(points, axis=0)
-    polarity = np.linalg.norm(points_com - (x, y)) / radius
-    return {"polarity": polarity}
+    Raises
+    ------
+    ValueError
+        If points or shapes are not GeoSeries or GeoDataFrame
+    """
+
+    # Dissolve points to get centroids for each shape-feature combination
+    # This gives a GeoSeries with MultiIndex (shape_key, feature_key)
+    point_centroids = points.dissolve(by=[shape_key, feature_key], observed=True).centroid.reset_index()
+
+    # Align shape centroids and radii to the shape_key in point_centroids_df
+    shape_centroids = shapes.centroid.reindex(point_centroids[shape_key].values).reset_index(drop=True)
+    shape_radii_aligned = shape_radii.reindex(point_centroids[shape_key].values).reset_index(drop=True)
+
+    # Compute distances between point centroids and shape centroids, then normalize by radius
+    polarity = point_centroids.geometry.distance(shape_centroids) / shape_radii_aligned
+
+    # Prepare output DataFrame with shape_key, feature_key, and polarity
+    result = pd.DataFrame(
+        {
+            shape_key: point_centroids[shape_key].values,
+            feature_key: point_centroids[feature_key].values,
+            "polarity": polarity.values,
+        }
+    )
+
+    return result

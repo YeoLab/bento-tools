@@ -1,0 +1,91 @@
+{
+    "machine_info": {
+        "node": "clarencesair15.lan",
+        "processor": "arm",
+        "machine": "arm64",
+        "python_compiler": "Clang 18.1.8 ",
+        "python_implementation": "CPython",
+        "python_implementation_version": "3.10.16",
+        "python_version": "3.10.16",
+        "python_build": [
+            "main",
+            "Dec  5 2024 14:20:01"
+        ],
+        "release": "25.0.0",
+        "system": "Darwin",
+        "cpu": {
+            "python_version": "3.10.16.final.0 (64 bit)",
+            "cpuinfo_version": [
+                9,
+                0,
+                0
+            ],
+            "cpuinfo_version_string": "9.0.0",
+            "arch": "ARM_8",
+            "bits": 64,
+            "count": 8,
+            "arch_string_raw": "arm64",
+            "brand_raw": "Apple M2"
+        }
+    },
+    "commit_info": {
+        "id": "0c7ffe4e7b5e034359cae64e42fb8fd8368a15d7",
+        "time": "2025-06-21T19:36:51-07:00",
+        "author_time": "2025-06-21T19:36:51-07:00",
+        "dirty": true,
+        "project": "bento-tools",
+        "branch": "daskify-features"
+    },
+    "benchmarks": [
+        {
+            "group": "ripley-benchmarks",
+            "name": "test_benchmark_ripley[small]",
+            "fullname": "tests/_test_measure_points.py::TestMeasurePoints::test_benchmark_ripley[small]",
+            "params": {
+                "test_data": "small"
+            },
+            "param": "small",
+            "extra_info": {
+                "dataset": "small",
+                "shapes": 100,
+                "points": 10000
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 6.113829624999198,
+                "max": 6.74131166699226,
+                "mean": 6.447332266997546,
+                "stddev": 0.24184648888777913,
+                "rounds": 5,
+                "median": 6.448125958995661,
+                "iqr": 0.3568840729931253,
+                "q1": 6.278473406502599,
+                "q3": 6.635357479495724,
+                "iqr_outliers": 0,
+                "stddev_outliers": 2,
+                "outliers": "2;0",
+                "ld15iqr": 6.113829624999198,
+                "hd15iqr": 6.74131166699226,
+                "ops": 0.15510291056640227,
+                "total": 32.23666133498773,
+                "data": [
+                    6.113829624999198,
+                    6.333354667003732,
+                    6.448125958995661,
+                    6.600039416996879,
+                    6.74131166699226
+                ],
+                "iterations": 1
+            }
+        }
+    ],
+    "datetime": "2025-07-11T08:20:31.076882+00:00",
+    "version": "5.1.0"
+}

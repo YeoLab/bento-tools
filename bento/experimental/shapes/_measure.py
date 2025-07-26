@@ -13,6 +13,7 @@ from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Polygon, MultiPolygon, Point
 from spatialdata import SpatialData
 from tqdm.dask import TqdmCallback
+from tqdm.auto import tqdm
 from numba import njit
 from bento._utils import get_shape
 from bento._logging import logger
@@ -50,27 +51,31 @@ def measure(
         - `shapes[shape_key][result_key]`
     """
     if not recompute and all(k in sdata.shapes[shape_key].columns for k in result_keys):
-        logger.info(
-            f"Skipping, recompute is False. {result_keys} exists in sdata.shapes[{shape_key}]"
-        )
+        logger.info(f"Skipping, recompute is False. {result_keys} exists in sdata.shapes[{shape_key}]")
         return
 
     # Process calculation
     shapes = get_shape(sdata, shape_key, sync=False).geometry
     shape_names = shapes.index.tolist()
 
-    shape_coords = np.array(shapes.apply(lambda x: np.array(x.exterior.xy)))
-
-    # Create processing bagsf
-    bags = db.from_sequence(shape_coords).map(func)
-
-    # Compute results with progress bar
-    dask.config.set(num_workers=n_jobs)
-    if progress:
-        with TqdmCallback(desc=emoji.emojize(":hourglass_not_done:"), leave=leave):
-            result = bags.compute()
+    if n_jobs == 1:
+        # No parallelism, no dask
+        if progress:
+            desc = emoji.emojize(":hourglass_not_done:")
+            result = [func(shape) for shape in tqdm(shapes, desc=desc, leave=leave, mininterval=0.5)]
+        else:
+            result = [func(shape) for shape in shapes]
     else:
-        result = bags.compute()
+        shape_coords = np.array(shapes.apply(lambda x: np.array(x.exterior.xy)))
+        # Use dask for parallel processing
+        bags = db.from_sequence(shape_coords).map(func)
+        dask.config.set(num_workers=n_jobs)
+        if progress:
+            desc = emoji.emojize(":hourglass_not_done:")
+            with TqdmCallback(desc=desc, leave=leave):
+                result = bags.compute()
+        else:
+            result = bags.compute()
 
     result = pd.DataFrame(result, index=shape_names)
     # Save results
@@ -101,18 +106,19 @@ def _aspect_ratio(shape: Union[Polygon, MultiPolygon]) -> float:
     return length / width
 
 
-@njit
-def _radius(coords: np.ndarray) -> float:
+def _radius(shape: Union[Polygon, MultiPolygon]) -> float:
     """Calculate average radius of shape."""
-    if coords.size == 0:
+    if not shape:
         return np.nan
 
+    coords = np.array(shape.exterior.xy).T
+
     # Calculate centroid from coordinates
-    centroid_x = np.mean(coords[0])
-    centroid_y = np.mean(coords[1])
-    
+    centroid_x = np.mean(coords[:, 0])
+    centroid_y = np.mean(coords[:, 1])
+
     # Calculate distances manually for numba compatibility
-    distances = np.sqrt((coords[0] - centroid_x)**2 + (coords[1] - centroid_y)**2)
+    distances = np.sqrt((coords[:, 0] - centroid_x) ** 2 + (coords[:, 1] - centroid_y) ** 2)
     return np.mean(distances)
 
 
@@ -136,9 +142,7 @@ def _second_moment(shape: Union[Polygon, MultiPolygon]) -> float:
     return np.sum(radii * radii / len(pts))
 
 
-def _opening(
-    shape: Union[Polygon, MultiPolygon], proportion: float
-) -> Union[Polygon, MultiPolygon]:
+def _opening(shape: Union[Polygon, MultiPolygon], proportion: float) -> Union[Polygon, MultiPolygon]:
     """Compute morphological opening of shape."""
     if not shape:
         return None
@@ -173,10 +177,15 @@ def _bounds(shape: Union[Polygon, MultiPolygon]) -> tuple[float, float, float, f
 
 
 def _centroid(shape: Union[Polygon, MultiPolygon]) -> tuple[float, float]:
-    """Calculate centroid of shape."""
+    """Calculate centroid of shape from coordinate array."""
     if not shape:
         return (np.nan, np.nan)
-    return shape.centroid.xy
+
+    # Calculate centroid from coordinates
+    centroid_x = np.mean(shape.exterior.xy[0])
+    centroid_y = np.mean(shape.exterior.xy[1])
+
+    return (centroid_x, centroid_y)
 
 
 # ============================ PUBLIC API WRAPPERS ============================

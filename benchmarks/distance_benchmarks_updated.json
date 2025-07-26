@@ -1,0 +1,235 @@
+{
+    "machine_info": {
+        "node": "clarencesair15.lan",
+        "processor": "arm",
+        "machine": "arm64",
+        "python_compiler": "Clang 18.1.8 ",
+        "python_implementation": "CPython",
+        "python_implementation_version": "3.10.16",
+        "python_version": "3.10.16",
+        "python_build": [
+            "main",
+            "Dec  5 2024 14:20:01"
+        ],
+        "release": "25.0.0",
+        "system": "Darwin",
+        "cpu": {
+            "python_version": "3.10.16.final.0 (64 bit)",
+            "cpuinfo_version": [
+                9,
+                0,
+                0
+            ],
+            "cpuinfo_version_string": "9.0.0",
+            "arch": "ARM_8",
+            "bits": 64,
+            "count": 8,
+            "arch_string_raw": "arm64",
+            "brand_raw": "Apple M2"
+        }
+    },
+    "commit_info": {
+        "id": "0c7ffe4e7b5e034359cae64e42fb8fd8368a15d7",
+        "time": "2025-06-21T19:36:51-07:00",
+        "author_time": "2025-06-21T19:36:51-07:00",
+        "dirty": true,
+        "project": "bento-tools",
+        "branch": "daskify-features"
+    },
+    "benchmarks": [
+        {
+            "group": "distance-benchmarks",
+            "name": "test_benchmark_distance_stats[small]",
+            "fullname": "tests/_test_measure_points.py::TestMeasurePoints::test_benchmark_distance_stats[small]",
+            "params": {
+                "test_data": "small"
+            },
+            "param": "small",
+            "extra_info": {
+                "dataset": "small",
+                "shapes": 100,
+                "points": 100000
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.9038520839967532,
+                "max": 1.0203496670001186,
+                "mean": 0.9516819586016936,
+                "stddev": 0.04304509769666203,
+                "rounds": 5,
+                "median": 0.9436584590002894,
+                "iqr": 0.04629564649439999,
+                "q1": 0.926333489256649,
+                "q3": 0.972629135751049,
+                "iqr_outliers": 0,
+                "stddev_outliers": 2,
+                "outliers": "2;0",
+                "ld15iqr": 0.9038520839967532,
+                "hd15iqr": 1.0203496670001186,
+                "ops": 1.0507712066637263,
+                "total": 4.758409793008468,
+                "data": [
+                    0.9436584590002894,
+                    0.9038520839967532,
+                    0.9567222920013592,
+                    0.9338272910099477,
+                    1.0203496670001186
+                ],
+                "iterations": 1
+            }
+        },
+        {
+            "group": "distance-benchmarks",
+            "name": "test_benchmark_distance_stats[medium]",
+            "fullname": "tests/_test_measure_points.py::TestMeasurePoints::test_benchmark_distance_stats[medium]",
+            "params": {
+                "test_data": "medium"
+            },
+            "param": "medium",
+            "extra_info": {
+                "dataset": "unknown",
+                "shapes": 1000,
+                "points": 1000000
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 9.813030541001353,
+                "max": 10.025241040988476,
+                "mean": 9.91157806639967,
+                "stddev": 0.0769070717158296,
+                "rounds": 5,
+                "median": 9.916537167009665,
+                "iqr": 0.08308668774770922,
+                "q1": 9.864396197499445,
+                "q3": 9.947482885247155,
+                "iqr_outliers": 0,
+                "stddev_outliers": 2,
+                "outliers": "2;0",
+                "ld15iqr": 9.813030541001353,
+                "hd15iqr": 10.025241040988476,
+                "ops": 0.10089210752322156,
+                "total": 49.55789033199835,
+                "data": [
+                    9.916537167009665,
+                    10.025241040988476,
+                    9.921563500000047,
+                    9.813030541001353,
+                    9.88151808299881
+                ],
+                "iterations": 1
+            }
+        },
+        {
+            "group": "distance-benchmarks",
+            "name": "test_benchmark_distance_stats[large]",
+            "fullname": "tests/_test_measure_points.py::TestMeasurePoints::test_benchmark_distance_stats[large]",
+            "params": {
+                "test_data": "large"
+            },
+            "param": "large",
+            "extra_info": {
+                "dataset": "unknown",
+                "shapes": 10000,
+                "points": 10000000
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 97.14202866698906,
+                "max": 98.14406974999292,
+                "mean": 97.51593788339524,
+                "stddev": 0.41320352336761773,
+                "rounds": 5,
+                "median": 97.44621658300457,
+                "iqr": 0.6280657075076306,
+                "q1": 97.16449485474004,
+                "q3": 97.79256056224767,
+                "iqr_outliers": 0,
+                "stddev_outliers": 1,
+                "outliers": "1;0",
+                "ld15iqr": 97.14202866698906,
+                "hd15iqr": 98.14406974999292,
+                "ops": 0.010254733961496128,
+                "total": 487.5796894169762,
+                "data": [
+                    98.14406974999292,
+                    97.67539083299926,
+                    97.14202866698906,
+                    97.44621658300457,
+                    97.17198358399037
+                ],
+                "iterations": 1
+            }
+        },
+        {
+            "group": "distance-benchmarks",
+            "name": "test_benchmark_distance_stats[xlarge]",
+            "fullname": "tests/_test_measure_points.py::TestMeasurePoints::test_benchmark_distance_stats[xlarge]",
+            "params": {
+                "test_data": "xlarge"
+            },
+            "param": "xlarge",
+            "extra_info": {
+                "dataset": "unknown",
+                "shapes": 100000,
+                "points": 100000000
+            },
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 1026.4869234579965,
+                "max": 1048.538631250005,
+                "mean": 1034.4727773666032,
+                "stddev": 9.207763963262272,
+                "rounds": 5,
+                "median": 1030.0124059160007,
+                "iqr": 13.471628478750063,
+                "q1": 1027.8896024275055,
+                "q3": 1041.3612309062555,
+                "iqr_outliers": 0,
+                "stddev_outliers": 1,
+                "outliers": "1;0",
+                "ld15iqr": 1026.4869234579965,
+                "hd15iqr": 1048.538631250005,
+                "ops": 0.0009666759936840884,
+                "total": 5172.363886833016,
+                "data": [
+                    1048.538631250005,
+                    1038.9687641250057,
+                    1026.4869234579965,
+                    1030.0124059160007,
+                    1028.3571620840085
+                ],
+                "iterations": 1
+            }
+        }
+    ],
+    "datetime": "2025-07-11T18:59:27.521313+00:00",
+    "version": "5.1.0"
+}

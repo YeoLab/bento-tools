@@ -11,6 +11,8 @@ import dask.dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
 
+from ._logging import logger
+
 
 def filter_by_gene(
     sdata: SpatialData,
@@ -41,17 +43,13 @@ def filter_by_gene(
     gene_filter = (sdata.tables["table"].X >= min_count).sum(axis=0) > 0
     filtered_table = sdata.tables["table"][:, gene_filter]
 
-    filtered_genes = list(
-        sdata.tables["table"].var_names.difference(filtered_table.var_names)
-    )
+    filtered_genes = list(sdata.tables["table"].var_names.difference(filtered_table.var_names))
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=False)
     points = points[~points[feature_key].isin(filtered_genes)]
     points[feature_key] = points[feature_key].cat.remove_unused_categories()
 
     transform = sdata[points_key].attrs
-    points = PointsModel.parse(
-        dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"}
-    )
+    points = PointsModel.parse(dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"})
     points.attrs = transform
     sdata.points[points_key] = points
 
@@ -97,9 +95,7 @@ def get_points(
         raise ValueError(f"Points key {points_key} not found in sdata.points")
 
     if astype not in ["pandas", "dask", "geopandas"]:
-        raise ValueError(
-            f"astype must be one of ['dask', 'pandas', 'geopandas'], not {astype}"
-        )
+        raise ValueError(f"astype must be one of ['dask', 'pandas', 'geopandas'], not {astype}")
 
     # Sync points to instance_key
     if sync:
@@ -113,16 +109,10 @@ def get_points(
         return points.persist()
     elif astype == "geopandas":
         points = points.compute()
-        return gpd.GeoDataFrame(
-            points, geometry=gpd.points_from_xy(points.x, points.y), copy=True
-        )
+        return gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
 
 
-def get_shape(
-    sdata: SpatialData, 
-    shape_key: str, 
-    sync: bool = True
-) -> gpd.GeoSeries:
+def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoSeries:
     """Get shape geometries synchronized with cell boundaries.
 
     Parameters
@@ -196,9 +186,7 @@ def get_points_metadata(
         metadata_keys = [metadata_keys]
     for key in metadata_keys:
         if key not in sdata.points[points_key].columns:
-            raise ValueError(
-                f"Metadata key {key} not found in sdata.points[{points_key}]"
-            )
+            raise ValueError(f"Metadata key {key} not found in sdata.points[{points_key}]")
 
     metadata = sdata.points[points_key][metadata_keys]
 
@@ -240,9 +228,7 @@ def get_shape_metadata(
         metadata_keys = [metadata_keys]
     for key in metadata_keys:
         if key not in sdata.shapes[shape_key].columns:
-            raise ValueError(
-                f"Metadata key {key} not found in sdata.shapes[{shape_key}]"
-            )
+            raise ValueError(f"Metadata key {key} not found in sdata.shapes[{shape_key}]")
 
     return sdata.shapes[shape_key][metadata_keys]
 
@@ -253,7 +239,8 @@ def set_points_metadata(
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
     columns: Union[List[str], str],
 ) -> None:
-    """Add metadata columns to points data.
+    """Lightweight wrapper for setting metadata columns to points data and updating SpatialData object.
+    Assumes column values are already in correct order.
 
     Parameters
     ----------
@@ -281,10 +268,11 @@ def set_points_metadata(
 
     transform = sdata.points[points_key].attrs
     points = sdata.points[points_key].compute()
-    points.loc[:, columns] = metadata
-    points = PointsModel.parse(
-        dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"}
-    )
+
+    logger.info(f"points shape: {points.shape}")
+    logger.info(f"metadata shape: {metadata.shape}")
+    points[columns] = metadata
+    points = PointsModel.parse(dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"})
     points.attrs = transform
     sdata.points[points_key] = points
 
@@ -333,9 +321,7 @@ def set_shape_metadata(
         metadata = pd.DataFrame(metadata)
 
     if column_names is not None:
-        metadata.columns = (
-            [column_names] if isinstance(column_names, str) else column_names
-        )
+        metadata.columns = [column_names] if isinstance(column_names, str) else column_names
 
     # Fill missing values in string columns with empty string
     str_columns = metadata.select_dtypes(include="object", exclude="number").columns
@@ -347,9 +333,7 @@ def set_shape_metadata(
         if "" not in metadata[col].cat.categories:
             metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
 
-    sdata.shapes[shape_key] = sdata.shapes[shape_key].assign(
-        **metadata.reindex(shape_index).to_dict()
-    )
+    sdata.shapes[shape_key] = sdata.shapes[shape_key].assign(**metadata.reindex(shape_index).to_dict())
     # sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
 
 
@@ -370,17 +354,13 @@ def _sync_points(sdata: SpatialData, points_key: str) -> None:
     instance_key = get_instance_key(sdata)
 
     # Only keep points within instance_key shape
-    cells = set(sdata.shapes[instance_key].index)
-    transform = sdata.points[points_key].attrs
-    points_valid = points[
-        points[instance_key].isin(cells)
-    ]  # TODO why doesnt this grab the right cells
+    points = points.query(f"{instance_key} != ''")
     # Set points back to SpatialData object
     points_valid = PointsModel.parse(
-        dd.from_pandas(points_valid, npartitions=1),
+        points,
         coordinates={"x": "x", "y": "y"},
     )
-    points_valid.attrs = transform
+    points_valid.attrs = sdata.points[points_key].attrs.copy()
     sdata.points[points_key] = points_valid
 
 

@@ -1,0 +1,354 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" id="chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74" class="pygal-chart" viewBox="0 0 800 600"><!--Generated with pygal 3.0.5 (etree) ©Kozea 2012-2016 on 2025-07-11--><!--http://pygal.org--><!--http://github.com/Kozea/pygal--><defs><style type="text/css">#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74{-webkit-user-select:none;-webkit-font-smoothing:antialiased;font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .title{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:16px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .legends .legend text{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:14px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis text{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:10px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis text.major{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:10px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .text-overlay text.value{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:16px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .text-overlay text.label{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:10px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:14px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 text.no_data{font-family:Consolas,"Deja Vu Sans Mono","Bitstream Vera Sans Mono","Courier New",monospace;font-size:64px}
+#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74{background-color:rgba(249,249,249,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 path,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 rect,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 circle{-webkit-transition:150ms;-moz-transition:150ms;transition:150ms}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .graph &gt; .background{fill:rgba(249,249,249,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .plot &gt; .background{fill:rgba(255,255,255,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .graph{fill:rgba(0,0,0,.87)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 text.no_data{fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .title{fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .legends .legend text{fill:rgba(0,0,0,.87)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .legends .legend:hover text{fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .line{stroke:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .guide.line{stroke:rgba(0,0,0,.54)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .major.line{stroke:rgba(0,0,0,.87)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis text.major{fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y .guides:hover .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .line-graph .axis.x .guides:hover .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .stackedline-graph .axis.x .guides:hover .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .xy-graph .axis.x .guides:hover .guide.line{stroke:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .guides:hover text{fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .reactive{fill-opacity:.7;stroke-opacity:.8;stroke-width:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .ci{stroke:rgba(0,0,0,.87)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .reactive.active,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .active .reactive{fill-opacity:.8;stroke-opacity:.9;stroke-width:4}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .ci .reactive.active{stroke-width:1.5}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .series text{fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip rect{fill:rgba(255,255,255,1);stroke:rgba(0,0,0,1);-webkit-transition:opacity 150ms;-moz-transition:opacity 150ms;transition:opacity 150ms}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip .label{fill:rgba(0,0,0,.87)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip .label{fill:rgba(0,0,0,.87)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip .legend{font-size:.8em;fill:rgba(0,0,0,.54)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip .x_label{font-size:.6em;fill:rgba(0,0,0,1)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip .xlink{font-size:.5em;text-decoration:underline}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip .value{font-size:1.5em}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .bound{font-size:.5em}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .max-value{font-size:.75em;fill:rgba(0,0,0,.54)}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .map-element{fill:rgba(255,255,255,1);stroke:rgba(0,0,0,.54) !important}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .map-element .reactive{fill-opacity:inherit;stroke-opacity:inherit}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .color-0,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .color-0 a:visited{stroke:#3F51B5;fill:#3F51B5}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .text-overlay .color-0 text{fill:black}
+#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 text.no_data{text-anchor:middle}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .guide.line{fill:none}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .centered{text-anchor:middle}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .title{text-anchor:middle}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .legends .legend text{fill-opacity:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.x text{text-anchor:middle}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.x:not(.web) text[transform]{text-anchor:start}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.x:not(.web) text[transform].backwards{text-anchor:end}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y text{text-anchor:end}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y text[transform].backwards{text-anchor:start}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y2 text{text-anchor:start}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y2 text[transform].backwards{text-anchor:end}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .guide.line{stroke-dasharray:4,4;stroke:black}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .major.guide.line{stroke-dasharray:6,6;stroke:black}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .horizontal .axis.y .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .horizontal .axis.y2 .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .vertical .axis.x .guide.line{opacity:0}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .horizontal .axis.always_show .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .vertical .axis.always_show .guide.line{opacity:1 !important}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y .guides:hover .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.y2 .guides:hover .guide.line,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis.x .guides:hover .guide.line{opacity:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .axis .guides:hover text{opacity:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .nofill{fill:none}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .subtle-fill{fill-opacity:.2}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .dot{stroke-width:1px;fill-opacity:1;stroke-opacity:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .dot.active{stroke-width:5px}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .dot.negative{fill:transparent}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 text,#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 tspan{stroke:none !important}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .series text.active{opacity:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip rect{fill-opacity:.95;stroke-width:.5}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .tooltip text{fill-opacity:1}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .showable{visibility:hidden}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .showable.shown{visibility:visible}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .gauge-background{fill:rgba(229,229,229,1);stroke:none}#chart-628f74c5-0826-40f7-a2cd-fb8b0c740b74 .bg-lines{stroke:rgba(249,249,249,1);stroke-width:2px}
+.tooltip .value{font-size:1em !important}.axis text{font-size:9px !important}</style><script type="text/javascript">window.pygal = window.pygal || {};window.pygal.config = window.pygal.config || {};window.pygal.config['628f74c5-0826-40f7-a2cd-fb8b0c740b74'] = {"allow_interruptions": false, "box_mode": "tukey", "classes": ["pygal-chart"], "css": ["file://style.css", "file://graph.css", "inline:\n                .tooltip .value {\n                    font-size: 1em !important;\n                }\n                .axis text {\n                    font-size: 9px !important;\n                }\n            "], "defs": [], "disable_xml_declaration": false, "dots_size": 2.5, "dynamic_print_values": false, "explicit_size": false, "fill": false, "force_uri_protocol": "https", "formatter": null, "half_pie": false, "height": 600, "include_x_axis": false, "inner_radius": 0, "interpolate": null, "interpolation_parameters": {}, "interpolation_precision": 250, "inverse_y_axis": false, "js": ["file:///opt/homebrew/Caskroom/mambaforge/base/envs/bento-dev/lib/python3.10/site-packages/pygaljs/static/2.0.x/pygal-tooltips.js"], "legend_at_bottom": false, "legend_at_bottom_columns": null, "legend_box_size": 12, "logarithmic": false, "margin": 20, "margin_bottom": null, "margin_left": null, "margin_right": null, "margin_top": null, "max_scale": 20, "min_scale": 20, "missing_value_fill_truncation": "x", "no_data_text": "No data", "no_prefix": false, "order_min": null, "pretty_print": false, "print_labels": false, "print_values": false, "print_values_position": "center", "print_zeroes": true, "range": [6, 7], "rounded_bars": null, "secondary_range": null, "show_dots": true, "show_legend": false, "show_minor_x_labels": true, "show_minor_y_labels": true, "show_only_major_dots": false, "show_x_guides": false, "show_x_labels": true, "show_y_guides": true, "show_y_labels": true, "spacing": 10, "stack_from_top": false, "strict": false, "stroke": true, "stroke_style": null, "style": {"background": "rgba(249, 249, 249, 1)", "ci_colors": [], "colors": ["#3F51B5"], "dot_opacity": "1", "font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "foreground": "rgba(0, 0, 0, .87)", "foreground_strong": "rgba(0, 0, 0, 1)", "foreground_subtle": "rgba(0, 0, 0, .54)", "guide_stroke_color": "black", "guide_stroke_dasharray": "4,4", "label_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "label_font_size": 10, "legend_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "legend_font_size": 14, "major_guide_stroke_color": "black", "major_guide_stroke_dasharray": "6,6", "major_label_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "major_label_font_size": 10, "no_data_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "no_data_font_size": 64, "opacity": ".7", "opacity_hover": ".8", "plot_background": "rgba(255, 255, 255, 1)", "stroke_opacity": ".8", "stroke_opacity_hover": ".9", "stroke_width": "1", "stroke_width_hover": "4", "title_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "title_font_size": 16, "tooltip_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "tooltip_font_size": 14, "transition": "150ms", "value_background": "rgba(229, 229, 229, 1)", "value_colors": [], "value_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "value_font_size": 16, "value_label_font_family": "Consolas, \"Deja Vu Sans Mono\", \"Bitstream Vera Sans Mono\", \"Courier New\", monospace", "value_label_font_size": 10}, "title": "Speed in Seconds of ripley-benchmarks", "tooltip_border_radius": 0, "tooltip_fancy_mode": true, "truncate_label": 50, "truncate_legend": null, "width": 800, "x_label_rotation": 270, "x_labels": ["test_benchmark_ripley[small]"], "x_labels_major": null, "x_labels_major_count": null, "x_labels_major_every": null, "x_title": "Trial", "xrange": null, "y_label_rotation": 0, "y_labels": null, "y_labels_major": null, "y_labels_major_count": null, "y_labels_major_every": null, "y_title": "Duration", "zero": 6, "legends": ["tests/_test_measure_points.py::TestMeasurePoints::test_benchmark_ripley[small] - 5 rounds"]}</script><script type="text/javascript">(function() {
+  var $, get_translation, init, init_svg, matches, padding, r_translation, sibl, svg_ns, tooltip_timeout, xlink_ns;
+
+  svg_ns = 'http://www.w3.org/2000/svg';
+
+  xlink_ns = 'http://www.w3.org/1999/xlink';
+
+  $ = function(sel, ctx) {
+    if (ctx == null) {
+      ctx = null;
+    }
+    ctx = ctx || document;
+    return Array.prototype.slice.call(ctx.querySelectorAll(sel), 0).filter(function(e) {
+      return e !== ctx;
+    });
+  };
+
+  matches = function(el, selector) {
+    return (el.matches || el.matchesSelector || el.msMatchesSelector || el.mozMatchesSelector || el.webkitMatchesSelector || el.oMatchesSelector).call(el, selector);
+  };
+
+  sibl = function(el, match) {
+    if (match == null) {
+      match = null;
+    }
+    return Array.prototype.filter.call(el.parentElement.children, function(child) {
+      return child !== el &amp;&amp; (!match || matches(child, match));
+    });
+  };
+
+  Array.prototype.one = function() {
+    return this.length &gt; 0 &amp;&amp; this[0] || {};
+  };
+
+  padding = 5;
+
+  tooltip_timeout = null;
+
+  r_translation = /translate\((\d+)[ ,]+(\d+)\)/;
+
+  get_translation = function(el) {
+    return (r_translation.exec(el.getAttribute('transform')) || []).slice(1).map(function(x) {
+      return +x;
+    });
+  };
+
+  init = function(ctx) {
+    var bbox, box, config, el, graph, inner_svg, num, parent, tooltip, tooltip_el, tt, uid, untooltip, xconvert, yconvert, _i, _j, _k, _len, _len1, _len2, _ref, _ref1, _ref2, _ref3;
+    if ($('svg', ctx).length) {
+      inner_svg = $('svg', ctx).one();
+      parent = inner_svg.parentElement;
+      box = inner_svg.viewBox.baseVal;
+      bbox = parent.getBBox();
+      xconvert = function(x) {
+        return ((x - box.x) / box.width) * bbox.width;
+      };
+      yconvert = function(y) {
+        return ((y - box.y) / box.height) * bbox.height;
+      };
+    } else {
+      xconvert = yconvert = function(x) {
+        return x;
+      };
+    }
+    if (((_ref = window.pygal) != null ? _ref.config : void 0) != null) {
+      if (window.pygal.config.no_prefix != null) {
+        config = window.pygal.config;
+      } else {
+        uid = ctx.id.replace('chart-', '');
+        config = window.pygal.config[uid];
+      }
+    } else {
+      config = window.config;
+    }
+    tooltip_el = null;
+    graph = $('.graph').one();
+    tt = $('.tooltip', ctx).one();
+    _ref1 = $('.reactive', ctx);
+    for (_i = 0, _len = _ref1.length; _i &lt; _len; _i++) {
+      el = _ref1[_i];
+      el.addEventListener('mouseenter', (function(el) {
+        return function() {
+          return el.classList.add('active');
+        };
+      })(el));
+      el.addEventListener('mouseleave', (function(el) {
+        return function() {
+          return el.classList.remove('active');
+        };
+      })(el));
+    }
+    _ref2 = $('.activate-serie', ctx);
+    for (_j = 0, _len1 = _ref2.length; _j &lt; _len1; _j++) {
+      el = _ref2[_j];
+      num = el.id.replace('activate-serie-', '');
+      el.addEventListener('mouseenter', (function(num) {
+        return function() {
+          var re, _k, _len2, _ref3, _results;
+          _ref3 = $('.serie-' + num + ' .reactive', ctx);
+          _results = [];
+          for (_k = 0, _len2 = _ref3.length; _k &lt; _len2; _k++) {
+            re = _ref3[_k];
+            _results.push(re.classList.add('active'));
+          }
+          return _results;
+        };
+      })(num));
+      el.addEventListener('mouseleave', (function(num) {
+        return function() {
+          var re, _k, _len2, _ref3, _results;
+          _ref3 = $('.serie-' + num + ' .reactive', ctx);
+          _results = [];
+          for (_k = 0, _len2 = _ref3.length; _k &lt; _len2; _k++) {
+            re = _ref3[_k];
+            _results.push(re.classList.remove('active'));
+          }
+          return _results;
+        };
+      })(num));
+      el.addEventListener('click', (function(el, num) {
+        return function() {
+          var ov, re, rect, show, _k, _l, _len2, _len3, _ref3, _ref4, _results;
+          rect = $('rect', el).one();
+          show = rect.style.fill !== '';
+          rect.style.fill = show ? '' : 'transparent';
+          _ref3 = $('.serie-' + num + ' .reactive', ctx);
+          for (_k = 0, _len2 = _ref3.length; _k &lt; _len2; _k++) {
+            re = _ref3[_k];
+            re.style.display = show ? '' : 'none';
+          }
+          _ref4 = $('.text-overlay .serie-' + num, ctx);
+          _results = [];
+          for (_l = 0, _len3 = _ref4.length; _l &lt; _len3; _l++) {
+            ov = _ref4[_l];
+            _results.push(ov.style.display = show ? '' : 'none');
+          }
+          return _results;
+        };
+      })(el, num));
+    }
+    _ref3 = $('.tooltip-trigger', ctx);
+    for (_k = 0, _len2 = _ref3.length; _k &lt; _len2; _k++) {
+      el = _ref3[_k];
+      el.addEventListener('mouseenter', (function(el) {
+        return function() {
+          return tooltip_el = tooltip(el);
+        };
+      })(el));
+    }
+    tt.addEventListener('mouseenter', function() {
+      return tooltip_el != null ? tooltip_el.classList.add('active') : void 0;
+    });
+    tt.addEventListener('mouseleave', function() {
+      return tooltip_el != null ? tooltip_el.classList.remove('active') : void 0;
+    });
+    ctx.addEventListener('mouseleave', function() {
+      if (tooltip_timeout) {
+        clearTimeout(tooltip_timeout);
+      }
+      return untooltip(0);
+    });
+    graph.addEventListener('mousemove', function(el) {
+      if (tooltip_timeout) {
+        return;
+      }
+      if (!matches(el.target, '.background')) {
+        return;
+      }
+      return untooltip(1000);
+    });
+    tooltip = function(el) {
+      var a, baseline, cls, current_x, current_y, dy, h, i, key, keys, label, legend, name, plot_x, plot_y, rect, serie_index, subval, text, text_group, texts, traversal, value, w, x, x_elt, x_label, xlink, y, y_elt, _l, _len3, _len4, _len5, _m, _n, _ref4, _ref5, _ref6, _ref7, _ref8;
+      clearTimeout(tooltip_timeout);
+      tooltip_timeout = null;
+      tt.style.opacity = 1;
+      tt.style.display = '';
+      text_group = $('g.text', tt).one();
+      rect = $('rect', tt).one();
+      text_group.innerHTML = '';
+      label = sibl(el, '.label').one().textContent;
+      x_label = sibl(el, '.x_label').one().textContent;
+      value = sibl(el, '.value').one().textContent;
+      xlink = sibl(el, '.xlink').one().textContent;
+      serie_index = null;
+      parent = el;
+      traversal = [];
+      while (parent) {
+        traversal.push(parent);
+        if (parent.classList.contains('series')) {
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      if (parent) {
+        _ref4 = parent.classList;
+        for (_l = 0, _len3 = _ref4.length; _l &lt; _len3; _l++) {
+          cls = _ref4[_l];
+          if (cls.indexOf('serie-') === 0) {
+            serie_index = +cls.replace('serie-', '');
+            break;
+          }
+        }
+      }
+      legend = null;
+      if (serie_index !== null) {
+        legend = config.legends[serie_index];
+      }
+      dy = 0;
+      keys = [[label, 'label']];
+      _ref5 = value.split('\n');
+      for (i = _m = 0, _len4 = _ref5.length; _m &lt; _len4; i = ++_m) {
+        subval = _ref5[i];
+        keys.push([subval, 'value-' + i]);
+      }
+      if (config.tooltip_fancy_mode) {
+        keys.push([xlink, 'xlink']);
+        keys.unshift([x_label, 'x_label']);
+        keys.unshift([legend, 'legend']);
+      }
+      texts = {};
+      for (_n = 0, _len5 = keys.length; _n &lt; _len5; _n++) {
+        _ref6 = keys[_n], key = _ref6[0], name = _ref6[1];
+        if (key) {
+          text = document.createElementNS(svg_ns, 'text');
+          text.textContent = key;
+          text.setAttribute('x', padding);
+          text.setAttribute('dy', dy);
+          text.classList.add(name.indexOf('value') === 0 ? 'value' : name);
+          if (name.indexOf('value') === 0 &amp;&amp; config.tooltip_fancy_mode) {
+            text.classList.add('color-' + serie_index);
+          }
+          if (name === 'xlink') {
+            a = document.createElementNS(svg_ns, 'a');
+            a.setAttributeNS(xlink_ns, 'href', key);
+            a.textContent = void 0;
+            a.appendChild(text);
+            text.textContent = 'Link &gt;';
+            text_group.appendChild(a);
+          } else {
+            text_group.appendChild(text);
+          }
+          dy += text.getBBox().height + padding / 2;
+          baseline = padding;
+          if (text.style.dominantBaseline !== void 0) {
+            text.style.dominantBaseline = 'text-before-edge';
+          } else {
+            baseline += text.getBBox().height * .8;
+          }
+          text.setAttribute('y', baseline);
+          texts[name] = text;
+        }
+      }
+      w = text_group.getBBox().width + 2 * padding;
+      h = text_group.getBBox().height + 2 * padding;
+      rect.setAttribute('width', w);
+      rect.setAttribute('height', h);
+      if (texts.value) {
+        texts.value.setAttribute('dx', (w - texts.value.getBBox().width) / 2 - padding);
+      }
+      if (texts.x_label) {
+        texts.x_label.setAttribute('dx', w - texts.x_label.getBBox().width - 2 * padding);
+      }
+      if (texts.xlink) {
+        texts.xlink.setAttribute('dx', w - texts.xlink.getBBox().width - 2 * padding);
+      }
+      x_elt = sibl(el, '.x').one();
+      y_elt = sibl(el, '.y').one();
+      x = parseInt(x_elt.textContent);
+      if (x_elt.classList.contains('centered')) {
+        x -= w / 2;
+      } else if (x_elt.classList.contains('left')) {
+        x -= w;
+      } else if (x_elt.classList.contains('auto')) {
+        x = xconvert(el.getBBox().x + el.getBBox().width / 2) - w / 2;
+      }
+      y = parseInt(y_elt.textContent);
+      if (y_elt.classList.contains('centered')) {
+        y -= h / 2;
+      } else if (y_elt.classList.contains('top')) {
+        y -= h;
+      } else if (y_elt.classList.contains('auto')) {
+        y = yconvert(el.getBBox().y + el.getBBox().height / 2) - h / 2;
+      }
+      _ref7 = get_translation(tt.parentElement), plot_x = _ref7[0], plot_y = _ref7[1];
+      if (x + w + plot_x &gt; config.width) {
+        x = config.width - w - plot_x;
+      }
+      if (y + h + plot_y &gt; config.height) {
+        y = config.height - h - plot_y;
+      }
+      if (x + plot_x &lt; 0) {
+        x = -plot_x;
+      }
+      if (y + plot_y &lt; 0) {
+        y = -plot_y;
+      }
+      _ref8 = get_translation(tt), current_x = _ref8[0], current_y = _ref8[1];
+      if (current_x === x &amp;&amp; current_y === y) {
+        return el;
+      }
+      tt.setAttribute('transform', "translate(" + x + " " + y + ")");
+      return el;
+    };
+    return untooltip = function(ms) {
+      return tooltip_timeout = setTimeout(function() {
+        tt.style.display = 'none';
+        tt.style.opacity = 0;
+        if (tooltip_el != null) {
+          tooltip_el.classList.remove('active');
+        }
+        return tooltip_timeout = null;
+      }, ms);
+    };
+  };
+
+  init_svg = function() {
+    var chart, charts, _i, _len, _results;
+    charts = $('.pygal-chart');
+    if (charts.length) {
+      _results = [];
+      for (_i = 0, _len = charts.length; _i &lt; _len; _i++) {
+        chart = charts[_i];
+        _results.push(init(chart));
+      }
+      return _results;
+    }
+  };
+
+  if (document.readyState !== 'loading') {
+    init_svg();
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      return init_svg();
+    });
+  }
+
+  window.pygal = window.pygal || {};
+
+  window.pygal.init = init;
+
+  window.pygal.init_svg = init_svg;
+
+}).call(this);
+</script></defs><title>Speed in Seconds of ripley-benchmarks</title><g class="graph custombox-graph vertical"><rect x="0" y="0" width="800" height="600" class="background" /><g transform="translate(80, 46)" class="plot"><rect x="0" y="0" width="700.0" height="330.0" class="background" /><g class="axis y always_show"><path d="M0.000000 330.000000 h700.000000" class="line" /><g class="guides"><path d="M0.000000 323.653846 h700.000000" class="major guide line" /><text x="-5" y="327.1538461538463" class="major">6</text><title>6</title></g><g class="guides"><path d="M0.000000 298.269231 h700.000000" class="guide line" /><text x="-5" y="301.76923076923083" class="">6.08</text><title>6.08</title></g><g class="guides"><path d="M0.000000 272.884615 h700.000000" class="guide line" /><text x="-5" y="276.3846153846154" class="">6.16</text><title>6.16</title></g><g class="guides"><path d="M0.000000 247.500000 h700.000000" class="guide line" /><text x="-5" y="251.0" class="">6.24</text><title>6.24</title></g><g class="guides"><path d="M0.000000 222.115385 h700.000000" class="guide line" /><text x="-5" y="225.61538461538458" class="">6.32</text><title>6.32</title></g><g class="guides"><path d="M0.000000 196.730769 h700.000000" class="guide line" /><text x="-5" y="200.23076923076914" class="">6.4</text><title>6.4</title></g><g class="guides"><path d="M0.000000 171.346154 h700.000000" class="guide line" /><text x="-5" y="174.84615384615373" class="">6.48</text><title>6.48</title></g><g class="guides"><path d="M0.000000 145.961538 h700.000000" class="guide line" /><text x="-5" y="149.46153846153857" class="">6.56</text><title>6.56</title></g><g class="guides"><path d="M0.000000 120.576923 h700.000000" class="guide line" /><text x="-5" y="124.07692307692315" class="">6.64</text><title>6.64</title></g><g class="guides"><path d="M0.000000 95.192308 h700.000000" class="guide line" /><text x="-5" y="98.69230769230771" class="">6.72</text><title>6.72</title></g><g class="guides"><path d="M0.000000 69.807692 h700.000000" class="guide line" /><text x="-5" y="73.30769230769226" class="">6.8</text><title>6.8</title></g><g class="guides"><path d="M0.000000 44.423077 h700.000000" class="guide line" /><text x="-5" y="47.92307692307685" class="">6.88</text><title>6.88</title></g><g class="guides"><path d="M0.000000 19.038462 h700.000000" class="guide line" /><text x="-5" y="22.538461538461434" class="">6.96</text><title>6.96</title></g></g><g class="axis x"><path d="M0.000000 0.000000 v330.000000" class="line" /><g class="guides"><path d="M350.000000 0.000000 v330.000000" class="guide line" /><text x="350.0" y="345.0" class="backwards" transform="rotate(270 350.000000 345.000000)">test_benchmark_ripley[small]</text></g></g><g class="series serie-0 color-0"><g class="boxes"><g class="box"><path stroke-width="3" d="M201.923077 287.534831 L498.076923 287.534831" class="reactive tooltip-trigger" /><path stroke-width="3" d="M53.846154 181.460032 L646.153846 181.460032" class="reactive tooltip-trigger" /><path stroke-width="3" d="M201.923077 88.429952 L498.076923 88.429952" class="reactive tooltip-trigger" /><path stroke-width="2" d="M350.000000 287.534831 L350.000000 235.292092" class="reactive tooltip-trigger" /><path stroke-width="2" d="M350.000000 88.429952 L350.000000 122.050031" class="reactive tooltip-trigger" /><rect x="53.84615384615385" y="122.05003054462603" height="113.24206162281868" width="592.3076923076924" class="subtle-fill reactive tooltip-trigger" /><circle cx="350.00000000000006" cy="287.5348305291007" r="3" class="subtle-fill reactive tooltip-trigger" /><circle cx="350.00000000000006" cy="88.42995181976355" r="3" class="subtle-fill reactive tooltip-trigger" /><desc class="value">Min: 6.1138
+Q1-1.5IQR: 6.1138
+Q1: 6.2785
+Median: 6.4481
+Q3: 6.6354
+Q3+1.5IQR: 6.7413
+Max: 6.7413</desc><desc class="x centered">350.00000000000006</desc><desc class="y centered">182.95338746053923</desc><desc class="x_label" /></g></g></g></g><g class="titles"><text x="400.0" y="26" class="title plot_title">Speed in Seconds of ripley-benchmarks</text><text x="430.0" y="580.0" class="title">Trial</text><text x="0" y="237.0" class="title" transform="rotate(-90 0.000000 211.000000)">Duration</text></g><g transform="translate(80, 46)" class="plot overlay"><g class="series serie-0 color-0" /></g><g transform="translate(80, 46)" class="plot text-overlay"><g class="series serie-0 color-0" /></g><g transform="translate(80, 46)" class="plot tooltip-overlay"><g transform="translate(0 0)" style="opacity: 0" class="tooltip"><rect rx="0" ry="0" width="0" height="0" class="tooltip-box" /><g class="text" /></g></g></g></svg>

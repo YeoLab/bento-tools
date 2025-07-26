@@ -1,146 +1,182 @@
-from typing import Union
-import polars as pl
+from typing import List, Dict
 import numpy as np
-from shapely.geometry import MultiPolygon, Polygon
-from numba import njit, float64, int64, guvectorize
+import pandas as pd
+import geopandas as gpd
+from tqdm.auto import tqdm
 
-# @guvectorize(
-#     [(float64[:], float64[:], float64[:], float64[:], float64, float64[:])],
-#     "(n),(n),(n),(n),()->(n)",
-#     # nopython=True,
-# )
-def _calculate_distances(x_points, y_points, x_shape, y_shape, radius, out):
-    """Calculate minimum distances from points to shape segments using numba.
+from bento._logging import logger
 
-    Parameters
-    ----------
-    x_points : float64[:]
-        x coordinates of points
-    y_points : float64[:]
-        y coordinates of points
-    x_shape : float64[:]
-        x coordinates of shape vertices
-    y_shape : float64[:]
-        y coordinates of shape vertices
-    radius : float64
-        Radius for normalization
-    out : float64[:]
-        Output array for mean and variance [mean, var]
+
+def compute_point_shape_distances(
+    points_geo: gpd.GeoSeries,
+    shapes_geo: gpd.GeoSeries,
+    shape_names: List[str],
+    progress: bool = True,
+) -> np.ndarray:
     """
-    n_points = len(x_points)
-    n_shape = len(x_shape)
-    min_distances = np.full(n_points, np.inf)
+    Compute distances from points to their assigned cell boundaries.
 
-    # For each point
-    for i in range(n_points):
-        px, py = x_points[i], y_points[i]
+    This function uses existing point-cell assignments (no spatial search needed)
+    and adds a distance column to the original points DataFrame.
 
-        # For each shape segment
-        for j in range(n_shape - 1):
-            # Get segment endpoints
-            x1, y1 = x_shape[j], y_shape[j]
-            x2, y2 = x_shape[j + 1], y_shape[j + 1]
+    Note: Always uses single-threaded execution for optimal performance since
+    the core distance computation is already vectorized and multiprocessing
+    overhead outweighs benefits.
 
-            # Vector from point to segment start
-            A = px - x1
-            B = py - y1
-            C = x2 - x1
-            D = y2 - y1
+    Parameters:
+        points_geo: GeoSeries
+            transcript coordinates
+        shapes_geo: GeoDataFrame
+            shape geometries indexed by shape IDs
+        shape_names: List[str]
+            List of shape names
+        progress: bool
+            Whether to show progress bar
+    Returns:
+        distances: np.ndarray
+            Distances from points to their assigned cell boundaries
 
-            # Calculate dot product and length squared
-            dot = A * C + B * D
-            len_sq = C * C + D * D
+    Examples:
+        >>> # Add distances to existing points
+        >>> distances = compute_point_cell_distances(points_df, shapes_gdf)
 
-            if len_sq == 0:
-                # Degenerate line segment
-                dist = np.sqrt(A * A + B * B)
-            else:
-                param = dot / len_sq
-                if param < 0:
-                    # Closest point is first vertex
-                    dist = np.sqrt(A * A + B * B)
-                elif param > 1:
-                    # Closest point is second vertex
-                    xx = px - x2
-                    yy = py - y2
-                    dist = np.sqrt(xx * xx + yy * yy)
-                else:
-                    # Closest point is on the line segment
-                    xx = px - (x1 + param * C)
-                    yy = py - (y1 + param * D)
-                    dist = np.sqrt(xx * xx + yy * yy)
-
-            # Update minimum distance for this point
-            if dist < min_distances[i]:
-                min_distances[i] = dist
-
-    # Normalize distances by radius
-    min_distances = min_distances / radius
-
-    # Calculate mean and variance
-    out[0] = np.mean(min_distances)
-    out[1] = np.var(min_distances)
-
-
-def _distances(
-    points: pl.DataFrame,
-    groupby_col: str,
-    radius: float,
-    shape_x_col: str,
-    shape_y_col: str,
-) -> pl.DataFrame:
-    """Calculate distance stats from points to shape using Polars expressions.
-
-    Parameters
-    ----------
-    points : pl.DataFrame
-        Points DataFrame with x,y coordinates, a groupby column, and shape coordinates
-    groupby_col : str
-        Column name to group by
-    radius : float
-        Radius of shape
-    shape_x_col : str
-        Column name containing x coordinates of the shape
-    shape_y_col : str
-        Column name containing y coordinates of the shape
-
-    Returns
-    -------
-    pl.DataFrame
-        DataFrame with distance statistics per group:
-        - dist_mean: Mean distance from points to shape
-        - dist_var: Variance of distance from points to shape
+        >>> # n_workers parameter is ignored but kept for compatibility
+        >>> distances = compute_point_cell_distances(
+        ...     points_df, shapes_gdf, n_workers=8
+        ... )
     """
-    if not (radius > 0):
-        return pl.DataFrame(
-            {
-                groupby_col: points[groupby_col].unique(),
-                "dist_mean": [np.nan],
-                "dist_var": [np.nan],
-            }
+    logger.info(f"Computing distances for {len(points_geo)} points")
+
+    # Validate inputs
+    if len(points_geo) != len(shape_names):
+        raise ValueError("Points and shape_names must have the same length")
+
+    # Group points by their cell assignments
+    logger.debug("Grouping points by cell assignments...")
+    points_by_cell = points_geo.groupby(shape_names, sort=True, observed=True)
+    shape_names_ordered = list(points_by_cell.groups.keys())
+    grouped_shapes = shapes_geo.loc[shape_names_ordered]
+    grouped_points = [points_by_cell.get_group(g) for g in shape_names_ordered]
+
+    # Pre-allocate arrays to store distances and indices
+    point_distances = np.empty(len(points_geo))
+    point_indices = np.empty(len(points_geo))
+    current_index = 0
+
+    iterator = zip(grouped_shapes, grouped_points)
+    if progress:
+        iterator = tqdm(iterator, total=len(grouped_shapes), desc="Computing distances", mininterval=0.5)
+
+    for shape, group_points in iterator:
+        # Distance to polygon boundary, not to the polygon itself
+        shape_boundary = shape.boundary
+        distances = group_points.distance(shape_boundary).values
+
+        point_distances[current_index : current_index + len(distances)] = distances
+        point_indices[current_index : current_index + len(distances)] = group_points.index.values
+        current_index += len(distances)
+
+    # Reindex distances to match original point order
+    all_distances = pd.Series(point_distances, index=point_indices).reindex_like(points_geo)
+
+    # Log statistics
+    valid_distances = ~np.isnan(all_distances)
+    n_valid = np.sum(valid_distances)
+    if n_valid > 0:
+        mean_dist = np.nanmean(all_distances)
+        logger.info(
+            f"Computed distances for {n_valid}/{len(points_geo)} points (mean: {mean_dist:.2f}, std: {np.nanstd(all_distances):.2f})"
+        )
+    else:
+        logger.warning("No valid distances computed")
+
+    return all_distances.values
+
+
+def compute_grouped_stats(
+    distances: np.ndarray,
+    feature_codes: np.ndarray,
+    shape_codes: np.ndarray,
+    n_features: int,
+    n_shapes: int,
+) -> Dict[str, np.ndarray]:
+    """
+    Compute mean and std distances for each feature-shape combination using bincount.
+
+    Parameters:
+    -----------
+    distances : np.ndarray
+        Array of distances from points to shape boundaries
+    feature_names : List[str]
+        List of feature names
+    feature_codes : np.ndarray
+        Array of feature codes for each distance measurement
+    shape_names : List[str]
+        List of shape names
+    shape_codes : np.ndarray
+        Array of shape codes for each distance measurement
+    n_features : int
+        Total number of features
+    n_shapes : int
+        Total number of shapes
+
+    Returns:
+    --------
+    Dictionary with 'mean' and 'std' arrays of shape (n_shapes, n_features)
+    """
+    # Validate inputs
+    if len(distances) != len(shape_codes) or len(distances) != len(feature_codes):
+        raise ValueError("distances, shape_codes, and feature_codes must have the same length")
+
+    # Check for negative indices
+    if np.any(feature_codes < 0):
+        raise ValueError(f"feature_codes contains negative values: {feature_codes[feature_codes < 0]}")
+    if np.any(shape_codes < 0):
+        raise ValueError(f"shape_codes contains negative values: {shape_codes[shape_codes < 0]}")
+
+    # Convert to larger integer types to prevent overflow
+    # The maximum combined index will be (n_features-1) * n_shapes + (n_shapes-1)
+    # which equals n_features * n_shapes - 1
+    max_combined_index = n_features * n_shapes - 1
+
+    # Choose appropriate dtype based on the maximum value we'll need
+    if max_combined_index < np.iinfo(np.int32).max:
+        dtype = np.int32
+    else:
+        dtype = np.int64
+
+    # Convert arrays to prevent overflow
+    feature_codes = feature_codes.astype(dtype)
+    shape_codes = shape_codes.astype(dtype)
+
+    # Create combined indices for feature-shape pairs
+    combined_indices = feature_codes * n_shapes + shape_codes
+
+    # Final check for negative combined indices (should not happen now)
+    if np.any(combined_indices < 0):
+        raise ValueError(
+            f"combined_indices contains negative values: min={combined_indices.min()}, max={combined_indices.max()}"
         )
 
-    # Group by and apply the distance calculation
-    result = points.group_by(groupby_col).agg(
-        pl.struct(["x", "y", shape_x_col, shape_y_col])
-        .map_batches(
-            lambda x: _calculate_distances(
-                x.struct.field("x"),
-                x.struct.field("y"),
-                x.struct.field(shape_x_col),
-                x.struct.field(shape_y_col),
-                radius,
-            )
-        )
-        .alias("stats")
-    )
+    # Use bincount to compute sums and counts
+    sums = np.bincount(combined_indices, weights=distances, minlength=n_features * n_shapes)
+    counts = np.bincount(combined_indices, minlength=n_features * n_shapes)
 
-    # Split the stats column into mean and variance
-    result = result.with_columns(
-        [
-            pl.col("stats").list.get(0).alias("dist_mean"),
-            pl.col("stats").list.get(1).alias("dist_var"),
-        ]
-    ).drop("stats")
+    # Reshape to (n_features, n_shapes) and transpose to (n_shapes, n_features)
+    sums = sums.reshape(n_features, n_shapes).T
+    counts = counts.reshape(n_features, n_shapes).T
 
-    return result
+    # Compute means
+    means = np.divide(sums, counts, out=np.full_like(sums, np.nan), where=counts > 0)
+
+    # Compute standard deviations
+    # For std, we need sum of squares
+    sum_squares = np.bincount(combined_indices, weights=distances**2, minlength=n_features * n_shapes)
+    sum_squares = sum_squares.reshape(n_features, n_shapes).T
+
+    # std = sqrt((sum_squares/counts) - (sums/counts)^2)
+    variances = np.divide(sum_squares, counts, out=np.full_like(sum_squares, np.nan), where=counts > 0)
+    variances -= means**2
+    stds = np.sqrt(np.maximum(variances, 0))  # Ensure non-negative
+
+    return {"mean": means, "std": stds}

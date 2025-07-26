@@ -1,0 +1,4 @@
+---
+description: Use the conda environment "bento-benchmarks" when running python and notebook scripts.
+alwaysApply: false
+---
