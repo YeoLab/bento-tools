@@ -12,10 +12,10 @@ from bento.images import total_intensity, mean_intensity, regionprops
 class TestImageFeatures:
     """Test suite for image measurement features."""
 
-    def test_total_intensity(self, image_data):
+    def test_total_intensity(self, synthetic_data):
         """Test total intensity calculation."""
         total_intensity(
-            image_data,
+            synthetic_data,
             image_key="test_image",
             label_key="test_labels",
             num_workers=1,
@@ -23,10 +23,10 @@ class TestImageFeatures:
 
         # Check that table was created with correct naming
         table_key = "test_labels.test_image.total"
-        assert table_key in image_data.tables
+        assert table_key in synthetic_data.tables
 
         # Check table structure
-        table = image_data.tables[table_key]
+        table = synthetic_data.tables[table_key]
         assert len(table.obs) > 0  # Should have observations (labels)
         assert len(table.var) > 0  # Should have variables (channels)
 
@@ -46,10 +46,10 @@ class TestImageFeatures:
             # Should have some non-zero intensities
             assert np.any(finite_values > 0)
 
-    def test_mean_intensity(self, image_data):
+    def test_mean_intensity(self, synthetic_data):
         """Test mean intensity calculation."""
         mean_intensity(
-            image_data,
+            synthetic_data,
             image_key="test_image",
             label_key="test_labels",
             num_workers=1,
@@ -57,10 +57,10 @@ class TestImageFeatures:
 
         # Check that table was created with correct naming
         table_key = "test_labels.test_image.mean"
-        assert table_key in image_data.tables
+        assert table_key in synthetic_data.tables
 
         # Check table structure
-        table = image_data.tables[table_key]
+        table = synthetic_data.tables[table_key]
         assert len(table.obs) > 0  # Should have observations (labels)
         assert len(table.var) > 0  # Should have variables (channels)
 
@@ -80,10 +80,10 @@ class TestImageFeatures:
             # Mean intensity should be within valid range (0-255 for our test data)
             assert np.all(finite_values <= 255)
 
-    def test_regionprops(self, image_data):
+    def test_regionprops(self, synthetic_data):
         """Test region properties calculation."""
         regionprops(
-            image_data,
+            synthetic_data,
             image_key="test_image",
             label_key="test_labels",
             num_workers=1,
@@ -91,10 +91,10 @@ class TestImageFeatures:
 
         # Check that table was created with correct naming
         table_key = "test_labels.test_image.rprops"
-        assert table_key in image_data.tables
+        assert table_key in synthetic_data.tables
 
         # Check table structure
-        table = image_data.tables[table_key]
+        table = synthetic_data.tables[table_key]
         assert len(table.obs) > 0  # Should have observations (labels)
         assert len(table.var) > 0  # Should have variables (channels)
 
@@ -120,12 +120,17 @@ class TestImageFeatures:
 class TestImageFeatureIntegration:
     """Integration tests for image features."""
 
-    def test_all_features_same_data(self, image_data):
+    def test_all_features_same_data(self, synthetic_data):
         """Test that all features can be computed on the same image dataset."""
+        # Clear any existing tables first
+        tables_to_remove = [k for k in list(synthetic_data.tables.keys()) if k.startswith("test_labels.test_image")]
+        for k in tables_to_remove:
+            del synthetic_data.tables[k]
+        
         # Compute all features
-        total_intensity(image_data, image_key="test_image", label_key="test_labels", num_workers=1)
-        mean_intensity(image_data, image_key="test_image", label_key="test_labels", num_workers=1)
-        regionprops(image_data, image_key="test_image", label_key="test_labels", num_workers=1)
+        total_intensity(synthetic_data, image_key="test_image", label_key="test_labels", num_workers=1)
+        mean_intensity(synthetic_data, image_key="test_image", label_key="test_labels", num_workers=1)
+        regionprops(synthetic_data, image_key="test_image", label_key="test_labels", num_workers=1)
 
         # Check that all tables were created
         expected_tables = [
@@ -134,67 +139,79 @@ class TestImageFeatureIntegration:
             "test_labels.test_image.rprops",
         ]
         for table_key in expected_tables:
-            assert table_key in image_data.tables
+            assert table_key in synthetic_data.tables
 
-    def test_specific_channels(self, image_data):
+    def test_specific_channels(self, synthetic_data):
         """Test that features work with specific channel selection."""
+        # Clear any existing tables first (fixture is session-scoped)
+        tables_to_remove = [k for k in list(synthetic_data.tables.keys()) if k.startswith("test_labels.test_image")]
+        for k in tables_to_remove:
+            del synthetic_data.tables[k]
+        
+        # Get actual channel names from the image
+        channel_names = list(synthetic_data.images["test_image"].coords["c"].values)
+        assert len(channel_names) >= 2, "Need at least 2 channels for this test"
+        
         # Test with single channel
         total_intensity(
-            image_data,
+            synthetic_data,
             image_key="test_image",
             label_key="test_labels",
-            img_channels="channel_0",
+            img_channels=channel_names[0],
             num_workers=1,
         )
 
         table_key = "test_labels.test_image.total"
-        assert table_key in image_data.tables
-        table = image_data.tables[table_key]
+        assert table_key in synthetic_data.tables
+        table = synthetic_data.tables[table_key]
         # Should have only one channel
         assert len(table.var) == 1
 
+        # Delete the table to test with multiple channels
+        del synthetic_data.tables[table_key]
+        
         # Test with multiple channels
         total_intensity(
-            image_data,
+            synthetic_data,
             image_key="test_image",
             label_key="test_labels",
-            img_channels=["channel_0", "channel_1"],
+            img_channels=channel_names[:2],
             num_workers=1,
         )
 
         # Should now have 2 channels
-        table = image_data.tables[table_key]
+        table = synthetic_data.tables[table_key]
         assert len(table.var) == 2
 
 
 class TestImageFeatureErrors:
     """Error handling tests for image features."""
 
-    def test_invalid_image_key(self, image_data):
+    def test_invalid_image_key(self, synthetic_data):
         """Test error handling with invalid image key."""
         with pytest.raises(Exception):
             total_intensity(
-                image_data,
+                synthetic_data,
                 image_key="invalid_image",
                 label_key="test_labels",
                 num_workers=1,
             )
 
-    def test_invalid_label_key(self, image_data):
+    def test_invalid_label_key(self, synthetic_data):
         """Test error handling with invalid label key."""
         with pytest.raises(Exception):
             total_intensity(
-                image_data,
+                synthetic_data,
                 image_key="test_image",
                 label_key="invalid_labels",
                 num_workers=1,
             )
 
-    def test_invalid_channels(self, image_data):
+    def test_invalid_channels(self, synthetic_data):
         """Test error handling with invalid channel names."""
         with pytest.raises(Exception):
             total_intensity(
-                image_data,
+                synthetic_data,
                 image_key="test_image",
                 label_key="test_labels",
                 img_channels="invalid_channel",

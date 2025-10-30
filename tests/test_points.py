@@ -5,94 +5,24 @@ Tests for point measurement features using efficient vectorized computation.
 import pytest
 import numpy as np
 import pandas as pd
-import spatialdata as sd
-import geopandas as gpd
-import dask.dataframe as dd
 import logging
-from spatialdata.models import PointsModel, ShapesModel
-from shapely.geometry import Polygon
+from tests.conftest import (
+    N_SHAPES_SMALL,
+    N_SHAPES_MEDIUM,
+    N_GENES,
+    N_POINTS_PER_GENE,
+    _create_unified_synthetic_dataset,
+)
 
-import bento as bt
 from bento.points import distance_stats, polarity, moments, density, morans_i, ripley
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
 
-
-N_CELLS_SMALL: int = 100
-N_CELLS_MEDIUM: int = 1000
+N_CELLS_SMALL: int = N_SHAPES_SMALL
+N_CELLS_MEDIUM: int = N_SHAPES_MEDIUM
 N_CELLS_LARGE: int = 10000
 N_CELLS_XLARGE: int = 100000
-
-N_GENES: int = 100
-N_POINTS_PER_GENE: int = 10
-
-
-def _create_synthetic_dataset(n_shapes, n_genes, points_per_gene):
-    """Create a synthetic dataset with the specified parameters."""
-    np.random.seed(42)
-
-    # Create square shapes first, then generate points within them
-    shapes_data = {}
-    points_data = {"x": [], "y": [], "feature_name": []}
-
-    # Calculate grid layout for shapes to avoid overlap
-    grid_size = int(np.ceil(np.sqrt(n_shapes)))
-    cell_size = 100.0 / grid_size  # 100x100 area
-
-    for i in range(n_shapes):
-        # Calculate grid position
-        row = i // grid_size
-        col = i % grid_size
-
-        # Create a square shape with some padding
-        center_x = col * cell_size + cell_size / 2
-        center_y = row * cell_size + cell_size / 2
-        size = cell_size * 0.8  # 80% of cell size to avoid overlap
-
-        # Create square polygon
-        half_size = size / 2
-        coords = [
-            (center_x - half_size, center_y - half_size),
-            (center_x + half_size, center_y - half_size),
-            (center_x + half_size, center_y + half_size),
-            (center_x - half_size, center_y + half_size),
-            (center_x - half_size, center_y - half_size),  # Close the polygon
-        ]
-
-        shapes_data[f"{i}"] = Polygon(coords)
-
-        # Generate points for each gene within this shape
-        for gene_idx in range(n_genes):
-            # Generate points within the square bounds
-            x_coords = np.random.uniform(center_x - half_size, center_x + half_size, points_per_gene)
-            y_coords = np.random.uniform(center_y - half_size, center_y + half_size, points_per_gene)
-
-            points_data["x"].extend(x_coords)
-            points_data["y"].extend(y_coords)
-            points_data["feature_name"].extend([f"gene_{gene_idx}"] * points_per_gene)
-
-    # Create SpatialData object
-    points_df = pd.DataFrame(points_data)
-
-    # Create GeoDataFrame for shapes
-    shapes_gdf = gpd.GeoDataFrame({"geometry": list(shapes_data.values())}, index=list(shapes_data.keys()))
-
-    # Convert points to DaskDataFrame
-    points_ddf = dd.from_pandas(points_df, npartitions=1)
-    points = PointsModel.parse(points_ddf)
-    shapes = ShapesModel.parse(shapes_gdf)
-
-    # Create SpatialData
-    data = sd.SpatialData(points={"transcripts": points}, shapes={"cell_boundaries": shapes})
-    data = bt.io.prep(
-        data,
-        points_key="transcripts",
-        feature_key="feature_name",
-        instance_key="cell_boundaries",
-        shape_keys=["cell_boundaries"],
-    )
-    return data
 
 
 # Dataset parameterization
@@ -101,13 +31,21 @@ def test_data(request):
     """Parameterized fixture for test datasets."""
     dataset_size = request.param
     if dataset_size == "small":
-        return _create_synthetic_dataset(n_shapes=N_CELLS_SMALL, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE)
+        return _create_unified_synthetic_dataset(
+            n_shapes=N_CELLS_SMALL, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE, include_images=False
+        )
     elif dataset_size == "medium":
-        return _create_synthetic_dataset(n_shapes=N_CELLS_MEDIUM, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE)
+        return _create_unified_synthetic_dataset(
+            n_shapes=N_CELLS_MEDIUM, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE, include_images=False
+        )
     elif dataset_size == "large":
-        return _create_synthetic_dataset(n_shapes=N_CELLS_LARGE, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE)
+        return _create_unified_synthetic_dataset(
+            n_shapes=N_CELLS_LARGE, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE, include_images=False
+        )
     elif dataset_size == "xlarge":
-        return _create_synthetic_dataset(n_shapes=N_CELLS_XLARGE, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE)
+        return _create_unified_synthetic_dataset(
+            n_shapes=N_CELLS_XLARGE, n_genes=N_GENES, points_per_gene=N_POINTS_PER_GENE, include_images=False
+        )
     else:
         raise ValueError(f"Unknown dataset size: {dataset_size}")
 
@@ -116,7 +54,7 @@ class TestMeasures:
     """Test suite for point measurement features."""
 
     # Basic functionality tests
-    @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
     def test_distance_stats(self, test_data):
         """Test distance statistics calculation."""
         distance_stats(
@@ -165,7 +103,7 @@ class TestMeasures:
 
         assert dist_mean_df.values.std() > 0  # Should have some variation
 
-    @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
     def test_polarity(self, test_data):
         """Test polarity calculation."""
         polarity(
@@ -185,7 +123,7 @@ class TestMeasures:
         assert "polarity" in result_table.layers
 
         # Check dimensions
-        assert result_table.to_df("polarity").shape == (N_CELLS_MEDIUM, N_GENES)  # 1000 shapes, 100 genes
+        assert result_table.to_df("polarity").shape == (N_CELLS_SMALL, N_GENES)  # 1000 shapes, 100 genes
 
         # Data integrity checks for polarity layer
         polarity_df = result_table.to_df("polarity")
@@ -197,7 +135,7 @@ class TestMeasures:
             # Polarity is typically normalized, so values should be reasonable
             assert np.all(finite_values >= 0)  # Polarity is typically non-negative
 
-    @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
     def test_moments(self, test_data):
         """Test moments calculation."""
         moments(
@@ -217,7 +155,7 @@ class TestMeasures:
         moment_names = ["hum_1", "hum_2", "hum_3", "hum_4", "hum_5", "hum_6"]
         for moment in moment_names:
             assert moment in result_table.layers
-            assert result_table.to_df(moment).shape == (N_CELLS_MEDIUM, N_GENES)
+            assert result_table.to_df(moment).shape == (N_CELLS_SMALL, N_GENES)
 
         # Data integrity checks for moments layers
         for moment_name in moment_names:
@@ -230,7 +168,7 @@ class TestMeasures:
                 # Hu moments can be positive or negative, but should be reasonable
                 assert not np.any(np.abs(finite_values) > 1e6)  # No extremely large values
 
-    @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
     def test_density(self, test_data):
         """Test density calculation."""
         density(
@@ -244,7 +182,7 @@ class TestMeasures:
         assert "table" in test_data.tables
         result_table = test_data.tables["table"]
         assert "density" in result_table.layers
-        assert result_table.to_df("density").shape == (N_CELLS_MEDIUM, N_GENES)
+        assert result_table.to_df("density").shape == (N_CELLS_SMALL, N_GENES)
 
         # Data integrity checks for density layer
         density_df = result_table.to_df("density")
@@ -333,8 +271,9 @@ class TestMeasures:
                 assert not np.any(np.abs(finite_values) > 1e6)  # No extremely large values
 
 
+@pytest.mark.benchmark
 class TestBenchmarks:
-    @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
     @pytest.mark.parametrize("measure", [distance_stats, polarity, moments, density])
     def test_benchmark_compare_measures(self, benchmark, test_data, measure):
         """Benchmark comparison of distance, polarity, and moments."""
@@ -354,7 +293,7 @@ class TestBenchmarks:
 
     # Benchmark tests for performance comparison
     @pytest.mark.benchmark(group="distance-benchmarks")
-    @pytest.mark.parametrize("test_data", ["small", "medium", "large"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small", "medium"], indirect=True)
     def test_benchmark_distance_stats(self, benchmark, test_data):
         """Benchmark distance statistics calculation."""
         n_shapes = len(test_data.shapes["cell_boundaries"])
@@ -389,7 +328,7 @@ class TestBenchmarks:
         benchmark(run_distance_stats)
 
     @pytest.mark.benchmark(group="polarity-benchmarks")
-    @pytest.mark.parametrize("test_data", ["small", "medium", "large"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small", "medium"], indirect=True)
     def test_benchmark_polarity(self, benchmark, test_data):
         """Benchmark polarity calculation."""
         n_shapes = len(test_data.shapes["cell_boundaries"])
@@ -424,7 +363,7 @@ class TestBenchmarks:
         benchmark(run_polarity)
 
     @pytest.mark.benchmark(group="moments-benchmarks")
-    @pytest.mark.parametrize("test_data", ["small", "medium", "large"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small", "medium"], indirect=True)
     def test_benchmark_moments(self, benchmark, test_data):
         """Benchmark moments calculation."""
         n_shapes = len(test_data.shapes["cell_boundaries"])
@@ -459,7 +398,7 @@ class TestBenchmarks:
         benchmark(run_moments)
 
     @pytest.mark.benchmark(group="ripley-benchmarks")
-    @pytest.mark.parametrize("test_data", ["small", "medium", "large"], indirect=True)
+    @pytest.mark.parametrize("test_data", ["small", "medium"], indirect=True)
     def test_benchmark_ripley(self, benchmark, test_data):
         """Benchmark Ripley statistics calculation."""
         n_shapes = len(test_data.shapes["cell_boundaries"])

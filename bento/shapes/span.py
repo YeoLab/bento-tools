@@ -10,8 +10,9 @@ from ._measure import measure
 def _span(shape: Union[Polygon, MultiPolygon]) -> float:
     if not shape:
         return np.nan
-    shape_coo = np.array(shape.coords.xy).T
-    return int(distance_matrix(shape_coo, shape_coo).max())
+    # Use exterior.coords for polygon coordinates
+    shape_coo = np.array(shape.exterior.coords)
+    return float(distance_matrix(shape_coo, shape_coo).max())
 
 
 def span(

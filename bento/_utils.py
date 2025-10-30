@@ -134,17 +134,18 @@ def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoS
     ValueError
         If shape_key not found in sdata.shapes
     """
-    instance_key = sdata.tables["table"].uns["spatialdata_attrs"]["instance_key"]
-
     # Make sure shape exists in sdata.shapes
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
 
-    if sync and shape_key != instance_key:
-        _sync_shapes(sdata, shape_key, instance_key)
-        shape_index = sdata.shapes[shape_key][instance_key]
-        valid_shapes = shape_index != ""
-        return sdata.shapes[shape_key][valid_shapes].geometry
+    # Only sync if table exists and sync is True
+    if sync and "table" in sdata.tables:
+        instance_key = sdata.tables["table"].uns["spatialdata_attrs"]["instance_key"]
+        if shape_key != instance_key:
+            _sync_shapes(sdata, shape_key, instance_key)
+            shape_index = sdata.shapes[shape_key][instance_key]
+            valid_shapes = shape_index != ""
+            return sdata.shapes[shape_key][valid_shapes].geometry
 
     return sdata.shapes[shape_key].geometry
 
