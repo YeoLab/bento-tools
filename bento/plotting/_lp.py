@@ -10,10 +10,15 @@ from spatialdata._core.spatialdata import SpatialData
 from upsetplot import UpSet, from_indicators
 
 from .._constants import PATTERN_COLORS, PATTERN_NAMES
-from ..tools import lp_stats
+# from ..tools import lp_stats  # Removed with LP functionality
 from .._utils import get_points
 from ._utils import savefig
 from ._multidimensional import _radviz
+
+
+def _lp_stats_placeholder(sdata):
+    """Placeholder for removed lp_stats function."""
+    raise NotImplementedError("lp_stats has been removed. LP functionality is deprecated.")
 
 
 @savefig
@@ -99,7 +104,7 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(sdata)
+    _lp_stats_placeholder(sdata)  # Placeholder for removed lp_stats
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 

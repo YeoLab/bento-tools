@@ -1,5 +1,8 @@
 import pytest
 import spatialdata as sd
+import numpy as np
+import dask.array as da
+from spatialdata.models import Image2DModel, Labels2DModel
 
 import bento as bt
 
@@ -123,3 +126,62 @@ def small_data():
         shape_keys=["cell_boundaries", "nucleus_boundaries"],
     )
     return data
+
+
+def _create_synthetic_image_data():
+    """Create synthetic image and label data for testing image features."""
+    np.random.seed(42)
+    
+    # Create a 2D label array with distinct regions
+    height, width = 200, 200
+    labels = np.zeros((height, width), dtype=np.uint32)
+    
+    # Create 10 distinct circular regions
+    n_regions = 10
+    region_size = 30
+    for i in range(n_regions):
+        center_y = np.random.randint(region_size, height - region_size)
+        center_x = np.random.randint(region_size, width - region_size)
+        y, x = np.ogrid[:height, :width]
+        mask = (x - center_x) ** 2 + (y - center_y) ** 2 <= region_size ** 2
+        labels[mask] = i + 1  # Labels start from 1
+    
+    # Create a 3D image array with 3 channels (c, y, x)
+    n_channels = 3
+    image = np.zeros((n_channels, height, width), dtype=np.float32)
+    
+    # Generate different intensity patterns for each channel
+    for channel_idx in range(n_channels):
+        for region_id in range(1, n_regions + 1):
+            mask = labels == region_id
+            # Each channel has different intensity per region
+            intensity = np.random.uniform(100, 255) * (channel_idx + 1)
+            image[channel_idx, mask] = intensity
+            # Add some noise
+            noise = np.random.normal(0, 10, size=mask.sum())
+            image[channel_idx, mask] += noise
+    
+    # Clip to valid range
+    image = np.clip(image, 0, 255)
+    
+    # Convert to dask arrays
+    image_da = da.from_array(image, chunks=(n_channels, height, width))
+    labels_da = da.from_array(labels, chunks=(height, width))
+    
+    # Create SpatialData models
+    image_model = Image2DModel.parse(image_da, dims=["c", "y", "x"])
+    labels_model = Labels2DModel.parse(labels_da, dims=["y", "x"])
+    
+    # Create SpatialData object
+    data = sd.SpatialData(
+        images={"test_image": image_model},
+        labels={"test_labels": labels_model}
+    )
+    
+    return data
+
+
+@pytest.fixture(scope="session")
+def image_data():
+    """Fixture providing synthetic image and label data for testing image features."""
+    return _create_synthetic_image_data()

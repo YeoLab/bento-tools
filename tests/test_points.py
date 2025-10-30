@@ -13,7 +13,7 @@ from spatialdata.models import PointsModel, ShapesModel
 from shapely.geometry import Polygon
 
 import bento as bt
-import bento.experimental.points as bp
+from bento.points import distance_stats, polarity, moments, density, morans_i, ripley
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
@@ -119,8 +119,7 @@ class TestMeasures:
     @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
     def test_distance_stats(self, test_data):
         """Test distance statistics calculation."""
-
-        bp.distance_stats(
+        distance_stats(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -169,7 +168,7 @@ class TestMeasures:
     @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
     def test_polarity(self, test_data):
         """Test polarity calculation."""
-        bp.polarity(
+        polarity(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -201,7 +200,7 @@ class TestMeasures:
     @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
     def test_moments(self, test_data):
         """Test moments calculation."""
-        bp.moments(
+        moments(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -234,7 +233,7 @@ class TestMeasures:
     @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
     def test_density(self, test_data):
         """Test density calculation."""
-        bp.density(
+        density(
             test_data,
             shape_key="cell_boundaries",
             recompute=True,
@@ -258,44 +257,85 @@ class TestMeasures:
             # Should have some non-zero densities
             assert np.any(finite_values > 0)
 
-    # @pytest.mark.basic
-    # @pytest.mark.parametrize("test_data", ["small"], indirect=True)
-    # def test_ripley(self, test_data):
-    #     """Test Ripley statistics calculation."""
-    #     bp.ripley(
-    #         test_data,
-    #         points_key="transcripts",
-    #         shape_key="cell_boundaries",
-    #         feature_key="feature_name",
-    #         recompute=True,
-    #         progress=False,
-    #     )
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
+    def test_morans_i(self, test_data):
+        """Test Moran's I spatial autocorrelation calculation."""
+        morans_i(
+            test_data,
+            points_key="transcripts",
+            shape_key="cell_boundaries",
+            feature_key="feature_name",
+            recompute=True,
+            progress=False,
+            n_jobs=1,
+        )
 
-    #     # Check that results exist and have expected structure
-    #     assert "table" in test_data.tables
-    #     result_table = test_data.tables["table"]
+        # Check that results exist and have expected structure
+        assert "table" in test_data.tables
+        result_table = test_data.tables["table"]
 
-    #     # Ripley should have some statistical measures
-    #     assert len(result_table.layers) > 0
-    #     # Check dimensions match
-    #     layer_name = list(result_table.layers.keys())[0]
-    #     assert result_table.to_df(layer_name).shape == (100, 10)
+        # Check that we have morans_i layer
+        assert "morans_i" in result_table.layers
 
-    #     # Data integrity checks for Ripley layers
-    #     for layer_name in result_table.layers.keys():
-    #         if layer_name.startswith('ripley'):
-    #             ripley_df = result_table.to_df(layer_name)
+        # Check dimensions
+        n_shapes = len(test_data.shapes["cell_boundaries"])
+        assert result_table.to_df("morans_i").shape == (n_shapes, N_GENES)
 
-    #             # Ripley statistics should be finite
-    #             finite_values = ripley_df.values[~np.isnan(ripley_df.values)]
-    #             if len(finite_values) > 0:
-    #                 assert np.all(np.isfinite(finite_values))
+        # Data integrity checks for morans_i layer
+        morans_df = result_table.to_df("morans_i")
 
+        # Moran's I values should be finite
+        finite_values = morans_df.values[~np.isnan(morans_df.values)]
+        if len(finite_values) > 0:
+            assert np.all(np.isfinite(finite_values))
+            # Moran's I ranges typically from -1 to 1, but can be outside this range
+            # Values should be reasonable (not extremely large)
+            assert not np.any(np.abs(finite_values) > 10)  # No extremely large values
+
+    @pytest.mark.parametrize("test_data", ["small"], indirect=True)
+    def test_ripley(self, test_data):
+        """Test Ripley statistics calculation."""
+        ripley(
+            test_data,
+            points_key="transcripts",
+            shape_key="cell_boundaries",
+            feature_key="feature_name",
+            recompute=True,
+            progress=False,
+            n_jobs=1,
+        )
+
+        # Check that results exist and have expected structure
+        assert "table" in test_data.tables
+        result_table = test_data.tables["table"]
+
+        # Ripley should have some statistical measures
+        # Check that at least one ripley layer exists
+        ripley_layers = [k for k in result_table.layers.keys() if k.startswith("ripley")]
+        assert len(ripley_layers) > 0, "Expected at least one ripley layer"
+
+        # Check dimensions match
+        n_shapes = len(test_data.shapes["cell_boundaries"])
+        for layer_name in ripley_layers:
+            assert result_table.to_df(layer_name).shape == (n_shapes, N_GENES)
+
+        # Data integrity checks for Ripley layers
+        for layer_name in ripley_layers:
+            ripley_df = result_table.to_df(layer_name)
+
+            # Ripley statistics should be finite
+            finite_values = ripley_df.values[~np.isnan(ripley_df.values)]
+            if len(finite_values) > 0:
+                assert np.all(np.isfinite(finite_values))
+                # Ripley statistics should be non-negative for most measures
+                # (l_max, l_max_gradient, l_min_gradient, l_half_radius)
+                # Some like l_monotony can be negative (correlation coefficient)
+                assert not np.any(np.abs(finite_values) > 1e6)  # No extremely large values
 
 
 class TestBenchmarks:
     @pytest.mark.parametrize("test_data", ["medium"], indirect=True)
-    @pytest.mark.parametrize("measure", [bp.distance_stats, bp.polarity, bp.moments, bp.density])
+    @pytest.mark.parametrize("measure", [distance_stats, polarity, moments, density])
     def test_benchmark_compare_measures(self, benchmark, test_data, measure):
         """Benchmark comparison of distance, polarity, and moments."""
         benchmark.extra_info["measure"] = measure.__name__
@@ -337,7 +377,7 @@ class TestBenchmarks:
         benchmark.extra_info["points"] = n_points
 
         def run_distance_stats():
-            bp.distance_stats(
+            distance_stats(
                 test_data,
                 points_key="transcripts",
                 shape_key="cell_boundaries",
@@ -372,7 +412,7 @@ class TestBenchmarks:
         benchmark.extra_info["points"] = n_points
 
         def run_polarity():
-            bp.polarity(
+            polarity(
                 test_data,
                 points_key="transcripts",
                 shape_key="cell_boundaries",
@@ -407,7 +447,7 @@ class TestBenchmarks:
         benchmark.extra_info["points"] = n_points
 
         def run_moments():
-            bp.moments(
+            moments(
                 test_data,
                 points_key="transcripts",
                 shape_key="cell_boundaries",
@@ -442,7 +482,7 @@ class TestBenchmarks:
         benchmark.extra_info["points"] = n_points
 
         def run_ripley():
-            bp.ripley(
+            ripley(
                 test_data,
                 points_key="transcripts",
                 shape_key="cell_boundaries",
@@ -455,6 +495,7 @@ class TestBenchmarks:
 
 
 class TestErrors:
+    """Error handling tests."""
 
     # Error handling tests
     @pytest.mark.parametrize("test_data", ["small"], indirect=True)
@@ -463,7 +504,7 @@ class TestErrors:
 
         # Test with invalid shape key
         with pytest.raises(Exception):
-            bp.distance_stats(
+            distance_stats(
                 test_data,
                 points_key="transcripts",
                 shape_key="invalid_shape",
@@ -474,7 +515,7 @@ class TestErrors:
 
         # Test with invalid points key
         with pytest.raises(Exception):
-            bp.distance_stats(
+            distance_stats(
                 test_data,
                 points_key="invalid_points",
                 shape_key="cell_boundaries",
@@ -489,7 +530,7 @@ class TestErrors:
         """Test that functions skip computation when recompute=False and results exist."""
 
         # First computation
-        bp.distance_stats(
+        distance_stats(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -502,7 +543,7 @@ class TestErrors:
         original_result = test_data.tables["table"].to_df("dist_mean").copy()
 
         # Second computation with recompute=False should skip
-        bp.distance_stats(
+        distance_stats(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -521,7 +562,7 @@ class TestErrors:
         """Test that multiple features can be stored as layers in the same table."""
 
         # Compute distance stats
-        bp.distance_stats(
+        distance_stats(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -531,7 +572,7 @@ class TestErrors:
         )
 
         # Compute polarity
-        bp.polarity(
+        polarity(
             test_data,
             points_key="transcripts",
             shape_key="cell_boundaries",
@@ -541,7 +582,7 @@ class TestErrors:
         )
 
         # Compute density
-        bp.density(
+        density(
             test_data,
             shape_key="cell_boundaries",
             recompute=True,
@@ -556,3 +597,4 @@ class TestErrors:
         expected_layers = ["dist_mean", "dist_std", "polarity", "density"]
         for layer_name in expected_layers:
             assert layer_name in result_table.layers
+

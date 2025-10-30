@@ -31,7 +31,7 @@ from .._utils import (
 )
 from ..io._index import _sjoin_points, _sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
-from ..tools._shape_features import analyze_shapes
+from ..shapes import radius
 
 
 def flux(
@@ -100,10 +100,10 @@ def flux(
         return
 
     if method == "radius":
-        analyze_shapes(sdata, instance_key, "radius", progress=False, recompute=True)
+        radius(sdata, shape_key=instance_key, recompute=True, progress=False)
         mean_radius = (
             get_shape_metadata(
-                sdata, shape_key=instance_key, metadata_keys=f"{instance_key}_radius"
+                sdata, shape_key=instance_key, metadata_keys="radius"
             )
             .mean()
             .values[0]
@@ -125,14 +125,14 @@ def flux(
     pbar.set_description(emoji.emojize("Embedding"))
     step = 1 / res
     # Get grid rasters
-    analyze_shapes(
-        sdata,
-        instance_key,
-        "raster",
-        progress=False,
-        recompute=recompute,
-        feature_kws=dict(raster={"step": step}),
-    )
+    # Note: raster feature is not part of standard shape features
+    # This creates raster points for embedding - needs separate implementation
+    # For now, assuming raster points already exist or will be created separately
+    if f"{instance_key}_raster" not in sdata.points:
+        raise NotImplementedError(
+            f"Raster points for {instance_key} not found. "
+            "Raster feature needs to be implemented separately from standard shape features."
+        )
 
     # Grab raster points
     raster_points = get_points(
