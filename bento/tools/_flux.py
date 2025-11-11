@@ -1,6 +1,7 @@
 from typing import Iterable, Literal, Optional, Union, List
 
 import dask
+import dask.array as da
 import dask.delayed
 import emoji
 import geopandas as gpd
@@ -19,7 +20,8 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
 from sklearn.utils import resample
 from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import ShapesModel
+from spatialdata.models import ShapesModel, Image2DModel
+from spatialdata.transformations import Identity
 from tqdm.auto import tqdm
 from tqdm.dask import TqdmCallback
 
@@ -88,20 +90,24 @@ def flux(
     -------
     SpatialData
         Updated SpatialData object with:
-        - .points["{instance_key}_raster"]: pd.DataFrame containing flux values, embeddings, and colors.
+        - .images["{instance_key}_flux"]: Image2DModel containing flux values as channels:
+            * Gene expression channels (one per gene)
+            * Embedding channels (flux_embed_0, flux_embed_1, ...)
+            * Color channels (flux_color_r, flux_color_g, flux_color_b)
+            * Counts channel (flux_counts)
         - .tables["table"].uns["flux_genes"]: List of genes used for embedding.
         - .tables["table"].uns["flux_variance_ratio"]: Array of explained variance ratio for each component.
+        - .tables["table"].uns["flux_image_key"]: Key of the flux image in sdata.images.
+        - .tables["table"].uns["flux_channel_names"]: List of channel names in the flux image.
 
     Notes
     -----
     RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
     """
 
-    if (
-        f"{instance_key}_raster" in sdata.points
-        and len(sdata.points[f"{instance_key}_raster"].columns) > 3
-        and not recompute
-    ):
+    # Check if flux has already been computed
+    flux_image_key = f"{instance_key}_flux"
+    if flux_image_key in sdata.images and not recompute:
         return
 
     if method == "radius":
@@ -125,24 +131,46 @@ def flux(
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     points = points[[instance_key, feature_key, "x", "y"]]
 
-    # embeds points on a uniform grid
-    pbar = tqdm(total=3)
-    pbar.set_description(emoji.emojize("Embedding"))
+    # Create raster grid for flux computation
+    pbar = tqdm(total=4)
+    pbar.set_description(emoji.emojize("Creating raster grid"))
+    
+    # Determine spatial extent from shapes
+    shapes = sdata.shapes[instance_key]
+    bounds = shapes.total_bounds  # [minx, miny, maxx, maxy]
+    
+    # Create grid coordinates based on resolution
     step = 1 / res
-    # Get grid rasters
-    # Note: raster feature is not part of standard shape features
-    # This creates raster points for embedding - needs separate implementation
-    # For now, assuming raster points already exist or will be created separately
-    if f"{instance_key}_raster" not in sdata.points:
-        raise NotImplementedError(
-            f"Raster points for {instance_key} not found. "
-            "Raster feature needs to be implemented separately from standard shape features."
-        )
-
-    # Grab raster points
-    raster_points = get_points(
-        sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
+    x_coords = np.arange(bounds[0], bounds[2], step)
+    y_coords = np.arange(bounds[1], bounds[3], step)
+    
+    # Create grid height and width
+    grid_height = len(y_coords)
+    grid_width = len(x_coords)
+    
+    # Create meshgrid for raster points
+    xx, yy = np.meshgrid(x_coords, y_coords)
+    raster_coords = pd.DataFrame({
+        'x': xx.ravel(),
+        'y': yy.ravel()
+    })
+    
+    # Assign each raster point to a cell using spatial join
+    from shapely.geometry import Point
+    raster_geom = gpd.GeoDataFrame(
+        raster_coords,
+        geometry=[Point(x, y) for x, y in zip(raster_coords['x'], raster_coords['y'])],
+        crs=shapes.crs
     )
+    raster_with_cells = gpd.sjoin(raster_geom, shapes, how='left', predicate='within')
+    
+    # Filter to only points within cells and add index mapping
+    raster_points = raster_with_cells[raster_with_cells['index_right'].notna()].copy()
+    raster_points[instance_key] = raster_points['index_right']
+    raster_points['grid_x'] = ((raster_points['x'] - bounds[0]) / step).astype(int)
+    raster_points['grid_y'] = ((raster_points['y'] - bounds[1]) / step).astype(int)
+    
+    pbar.update()
 
     # Extract gene names and codes
     gene_names = points[feature_key].cat.categories.tolist()
@@ -264,42 +292,100 @@ def flux(
     variance_ratio = model.explained_variance_ratio_
 
     pbar.update()
-    pbar.set_description(emoji.emojize("Saving"))
+    pbar.set_description(emoji.emojize("Creating image layers"))
 
     embed_names = [f"flux_embed_{i}" for i in range(flux_embed.shape[1])]
     flux_color = vec2color(flux_embed, alpha_vec=rpoints_counts)
-
-    # Save flux embeddings and colors after reindexing to raster points
-    metadata = pd.DataFrame.sparse.from_spmatrix(
-        cell_fluxs, index=rpoint_index, columns=gene_names
-    )
-    metadata[embed_names] = flux_embed
-    metadata["flux_color"] = flux_color
-    metadata["flux_counts"] = rpoints_counts
-
-    # Compute index order once and apply to all
-    if not metadata.index.equals(raster_points.index):
-        _, indexer = metadata.index.reindex(
-            raster_points.index.astype(metadata.index.dtype)
-        )
-        metadata = metadata.iloc[indexer]
-
-    set_points_metadata(
-        sdata,
-        points_key=f"{instance_key}_raster",
-        metadata=metadata,
-        columns=metadata.columns,
-        chunk_size=chunk_size,
-    )
-
-    sdata.tables["table"].uns["flux_variance_ratio"] = variance_ratio
-    sdata.tables["table"].uns["flux_genes"] = gene_names  # gene names
     
-    # Write updated points data to zarr if sdata is backed by a zarr store
+    # Convert flux color hex strings to numeric representation
+    # Extract RGB values from hex colors for image storage
+    flux_color_rgb = np.array([
+        [int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)] 
+        if isinstance(c, str) and c.startswith('#') else [0, 0, 0]
+        for c in flux_color
+    ], dtype=np.float32) / 255.0
+
+    # Create mapping from raster point index to grid coordinates
+    raster_points['flux_index'] = range(len(raster_points))
+    
+    # Prepare data as sparse matrices then convert to dense image
+    # Genes: already sparse from cell_fluxs
+    # Embeddings: dense array flux_embed
+    # Counts: dense array rpoints_counts
+    
+    # Number of channels: genes + embeddings + RGB (3) + counts (1)
+    n_channels = n_genes + n_components + 3 + 1
+    channel_names = (
+        gene_names + 
+        embed_names + 
+        ['flux_color_r', 'flux_color_g', 'flux_color_b'] +
+        ['flux_counts']
+    )
+    
+    # Initialize image array with zeros
+    flux_image = np.zeros((n_channels, grid_height, grid_width), dtype=np.float32)
+    
+    # Fill in the image data at raster point locations
+    for idx in range(len(raster_points)):
+        if idx >= len(rpoint_index):
+            continue
+            
+        raster_idx = rpoint_index[idx]
+        raster_row = raster_points[raster_points['flux_index'] == raster_idx]
+        
+        if len(raster_row) == 0:
+            continue
+            
+        grid_y = raster_row['grid_y'].values[0]
+        grid_x = raster_row['grid_x'].values[0]
+        
+        # Ensure indices are within bounds
+        if grid_y >= grid_height or grid_x >= grid_width:
+            continue
+        
+        # Fill gene values (sparse, so convert row to dense)
+        gene_values = cell_fluxs[idx].toarray().ravel()
+        flux_image[:n_genes, grid_y, grid_x] = gene_values
+        
+        # Fill embedding values
+        flux_image[n_genes:n_genes+n_components, grid_y, grid_x] = flux_embed[idx]
+        
+        # Fill color RGB values
+        flux_image[n_genes+n_components:n_genes+n_components+3, grid_y, grid_x] = flux_color_rgb[idx]
+        
+        # Fill counts
+        flux_image[n_genes+n_components+3, grid_y, grid_x] = rpoints_counts[idx]
+    
+    # Convert to dask array with chunking for efficient storage
+    # Use reasonable chunk sizes: all channels, then chunk spatially
+    flux_image_da = da.from_array(flux_image, chunks=(n_channels, min(chunk_size, grid_height), min(chunk_size, grid_width)))
+    
+    # Create Image2DModel with proper metadata
+    flux_image_xr = Image2DModel.parse(
+        flux_image_da,
+        dims=['c', 'y', 'x'],
+        c_coords=channel_names,
+        transformations={"global": Identity()}
+    )
+    
+    # Store as image in SpatialData
+    image_key = f"{instance_key}_flux"
+    sdata.images[image_key] = flux_image_xr
+    
+    # Store metadata in table
+    sdata.tables["table"].uns["flux_variance_ratio"] = variance_ratio
+    sdata.tables["table"].uns["flux_genes"] = gene_names
+    sdata.tables["table"].uns["flux_image_key"] = image_key
+    sdata.tables["table"].uns["flux_channel_names"] = channel_names
+    
+    pbar.update()
+    
+    # Write updated image data to zarr if sdata is backed by a zarr store
     # This enables chunked writing via ome-zarr for efficient storage
     if hasattr(sdata, 'path') and sdata.path is not None:
         try:
-            sdata.write_element(f"{instance_key}_raster", overwrite=True)
+            pbar.set_description(emoji.emojize("Writing to zarr"))
+            sdata.write_element(image_key, overwrite=True)
             sdata.write_element("table", overwrite=True)
         except Exception as e:
             # If write fails (e.g., not backed by zarr), continue without error
