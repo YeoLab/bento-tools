@@ -47,6 +47,7 @@ def flux(
     random_state: int = 11,
     recompute: bool = False,
     num_workers: int = 1,
+    chunk_size: int = 10000,
 ) -> SpatialData:
     """
     Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
@@ -78,6 +79,10 @@ def flux(
         If True, recompute flux even if it already exists.
     num_workers : int, default 1
         Number of workers to use for parallel processing.
+    chunk_size : int, default 10000
+        Size of chunks for writing data to ome-zarr. Larger values use more memory
+        but may improve write performance. Chunked writing enables efficient storage
+        and reduces memory usage for large datasets.
 
     Returns
     -------
@@ -159,7 +164,7 @@ def flux(
 
     # Define a function that contains the operations to be performed in the for loop
     def process_cell(bag):
-        cpoints, rpoints, n_genes, method, n_neighbors, radius, cell_composition = bag
+        cpoints, rpoints, n_genes, method, n_neighbors, radius_param, cell_composition = bag
         rpoint_index = rpoints.index.tolist()
         if method == "knn":
             gene_count = _count_neighbors(
@@ -174,22 +179,34 @@ def flux(
                 cpoints,
                 n_genes,
                 rpoints,
-                radius=radius,
+                radius=radius_param,
                 agg=None,
             )
-        gene_count = gene_count.toarray()
-
-        # Count points in each neighborhood
-        total_count = gene_count.sum(axis=1)
-
-        # embedding: distance neighborhood composition and cell composition
-        # Compute composition of neighborhood
-        flux_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
-        cflux = flux_composition - cell_composition
-        cflux = StandardScaler(with_mean=False).fit_transform(cflux)
-
-        # Convert back to sparse matrix
-        cflux = csr_matrix(cflux)
+        
+        # Work with sparse matrices for memory efficiency
+        # Count points in each neighborhood using sparse operations
+        total_count = np.asarray(gene_count.sum(axis=1)).ravel()
+        
+        # Compute row sums for normalization, avoid division by zero
+        row_sums = np.asarray(gene_count.sum(axis=1)).ravel()
+        row_sums_safe = row_sums.copy()
+        row_sums_safe[row_sums_safe == 0] = 1  # Prevent division by zero
+        
+        # Compute composition using efficient sparse scaling
+        flux_composition = gene_count.multiply(1.0 / row_sums_safe[:, np.newaxis])
+        
+        # Convert to dense only for the subtraction and scaling operations
+        # This is necessary because we subtract a dense vector from each row
+        flux_dense = flux_composition.toarray()
+        cflux_dense = flux_dense - cell_composition
+        
+        # Apply StandardScaler with with_mean=False for consistent scaling
+        cflux_scaled = StandardScaler(with_mean=False).fit_transform(cflux_dense)
+        
+        # Convert result back to sparse CSR format for efficient storage
+        # Even if not fully sparse, CSR format is more memory-efficient for
+        # storage and can be efficiently written to zarr in chunks
+        cflux = csr_matrix(cflux_scaled)
 
         return cflux, total_count, rpoint_index
 
@@ -272,10 +289,22 @@ def flux(
         points_key=f"{instance_key}_raster",
         metadata=metadata,
         columns=metadata.columns,
+        chunk_size=chunk_size,
     )
 
     sdata.tables["table"].uns["flux_variance_ratio"] = variance_ratio
     sdata.tables["table"].uns["flux_genes"] = gene_names  # gene names
+    
+    # Write updated points data to zarr if sdata is backed by a zarr store
+    # This enables chunked writing via ome-zarr for efficient storage
+    if hasattr(sdata, 'path') and sdata.path is not None:
+        try:
+            sdata.write_element(f"{instance_key}_raster", overwrite=True)
+            sdata.write_element("table", overwrite=True)
+        except Exception as e:
+            # If write fails (e.g., not backed by zarr), continue without error
+            import warnings
+            warnings.warn(f"Could not write to zarr: {e}. Data remains in memory.")
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
     pbar.update()

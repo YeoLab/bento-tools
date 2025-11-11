@@ -239,6 +239,7 @@ def set_points_metadata(
     points_key: str,
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
     columns: Union[List[str], str],
+    chunk_size: int = 10000,
 ) -> None:
     """Lightweight wrapper for setting metadata columns to points data and updating SpatialData object.
     Assumes column values are already in correct order.
@@ -250,9 +251,11 @@ def set_points_metadata(
     points_key : str
         Key for points in sdata.points
     metadata : array-like
-        Data to add as new columns
+        Data to add as new columns. If DataFrame with sparse columns, sparsity is preserved.
     columns : str or list of str
         Names for new columns
+    chunk_size : int, default 10000
+        Size of chunks for processing data. Larger values use more memory but may be faster.
 
     Raises
     ------
@@ -264,16 +267,31 @@ def set_points_metadata(
 
     columns = [columns] if isinstance(columns, str) else columns
 
-    # metadata = pd.DataFrame(np.array(metadata), columns=columns)
-    metadata = np.array(metadata)
+    # Preserve sparse DataFrames, convert others to array
+    if isinstance(metadata, pd.DataFrame):
+        # Check if any columns are sparse and preserve them
+        metadata_to_add = metadata
+    else:
+        # Convert to array for non-DataFrame types
+        metadata_to_add = np.array(metadata)
 
     transform = sdata.points[points_key].attrs
     points = sdata.points[points_key].compute()
 
     logger.info(f"points shape: {points.shape}")
-    logger.info(f"metadata shape: {metadata.shape}")
-    points[columns] = metadata
-    points = PointsModel.parse(dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"})
+    if isinstance(metadata_to_add, pd.DataFrame):
+        logger.info(f"metadata shape: {metadata_to_add.shape}")
+        # Assign DataFrame columns directly to preserve sparsity
+        for col in columns:
+            if col in metadata_to_add.columns:
+                points[col] = metadata_to_add[col].values
+    else:
+        logger.info(f"metadata shape: {metadata_to_add.shape}")
+        points[columns] = metadata_to_add
+    
+    # Create dask dataframe with appropriate number of partitions based on chunk_size
+    n_partitions = max(1, len(points) // chunk_size)
+    points = PointsModel.parse(dd.from_pandas(points, npartitions=n_partitions), coordinates={"x": "x", "y": "y"})
     points.attrs = transform
     sdata.points[points_key] = points
 
