@@ -31,7 +31,7 @@ from .._utils import (
 )
 from ..io._index import _sjoin_points, _sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
-from ..shapes import radius
+from ..shapes import radius as compute_radius
 
 
 def flux(
@@ -105,7 +105,7 @@ def flux(
         return
 
     if method == "radius":
-        radius(sdata, shape_key=instance_key, recompute=True, progress=False)
+        compute_radius(sdata, shape_key=instance_key, recompute=True, progress=False)
         mean_radius = (
             get_shape_metadata(
                 sdata, shape_key=instance_key, metadata_keys="radius"
