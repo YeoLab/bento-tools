@@ -360,12 +360,22 @@ def flux(
     # Use reasonable chunk sizes: all channels, then chunk spatially
     flux_image_da = da.from_array(flux_image, chunks=(n_channels, min(chunk_size, grid_height), min(chunk_size, grid_width)))
     
-    # Create Image2DModel with proper metadata
+    # Create Image2DModel with proper multiscale metadata for ome-zarr
+    # Calculate appropriate scale factors based on image size
+    # Only add scale factors if image is large enough (at least 16x16 after downsampling)
+    scale_factors = None
+    min_dim = min(grid_height, grid_width)
+    if min_dim >= 64:
+        scale_factors = [2, 4]
+    elif min_dim >= 32:
+        scale_factors = [2]
+    
     flux_image_xr = Image2DModel.parse(
         flux_image_da,
         dims=['c', 'y', 'x'],
         c_coords=channel_names,
-        transformations={"global": Identity()}
+        transformations={"global": Identity()},
+        scale_factors=scale_factors  # Adaptive multiscale pyramid
     )
     
     # Store as image in SpatialData
