@@ -6,9 +6,9 @@ from tests import conftest
 
 
 @pytest.fixture(scope="module")
-def flux_data(small_data):
+def flux_data(synthetic_data):
     bt.tl.flux(
-        sdata=small_data,
+        sdata=synthetic_data,
         points_key="transcripts",
         instance_key="cell_boundaries",
         feature_key="feature_name",
@@ -16,7 +16,7 @@ def flux_data(small_data):
         radius=conftest.FLUX_RADIUS,
     )
 
-    return small_data
+    return synthetic_data
 
 
 def test_flux(flux_data):

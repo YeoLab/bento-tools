@@ -13,17 +13,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-TEST_ZARR = "small_data.zarr"
-CELL_TO_NUCLEUS_MAP = {
-    "c0": "",
-    "c1": "n4",
-    "c2": "n6",
-    "c3": "",
-    "c4": "n0",
-    "c5": "",
-}
-NUCLEUS_TO_CELL_MAP = {"n0": "c4", "n4": "c1", "n6": "c2"}
-
 FLUX_RES = 0.5
 FLUX_RADIUS = 20
 FLUXMAP_MIN_COUNT = 1
@@ -46,21 +35,6 @@ N_SHAPES_SMALL: int = 100
 N_SHAPES_MEDIUM: int = 1000
 N_GENES: int = 20
 N_POINTS_PER_GENE: int = 10
-
-
-@pytest.fixture(scope="session")
-def small_data():
-    data = sd.read_zarr(bt.__file__.rsplit("/", 1)[0] + "/datasets/" + TEST_ZARR)
-    data = bt.io.prep(
-        data,
-        points_key="transcripts",
-        feature_key="feature_name",
-        instance_key="cell_boundaries",
-        shape_keys=["cell_boundaries", "nucleus_boundaries"],
-    )
-    logger.info("Small data loaded:")
-    logger.info(data)
-    return data
 
 
 def _create_unified_synthetic_dataset(n_shapes, n_genes, points_per_gene, include_images=True):
@@ -133,10 +107,41 @@ def _create_unified_synthetic_dataset(n_shapes, n_genes, points_per_gene, includ
     points_ddf = dd.from_pandas(points_df, npartitions=1)
     points = PointsModel.parse(points_ddf)
 
+    # Create nucleus_boundaries as a subset of cell_boundaries
+    # Select approximately 60% of cells to have nuclei
+    n_nuclei = max(1, int(n_shapes * 0.6))
+    nucleus_indices = np.random.choice(n_shapes, size=n_nuclei, replace=False)
+    nucleus_data = {}
+    for idx in nucleus_indices:
+        # Create a smaller square inside the cell (representing nucleus)
+        cell_idx = f"{idx}"
+        cell_shape = shapes_data[cell_idx]
+        bounds = cell_shape.bounds
+        center_x = (bounds[0] + bounds[2]) / 2
+        center_y = (bounds[1] + bounds[3]) / 2
+        # Nucleus is 40% of cell size
+        nucleus_size = (bounds[2] - bounds[0]) * 0.4
+        nucleus_half = nucleus_size / 2
+        nucleus_coords = [
+            (center_x - nucleus_half, center_y - nucleus_half),
+            (center_x + nucleus_half, center_y - nucleus_half),
+            (center_x + nucleus_half, center_y + nucleus_half),
+            (center_x - nucleus_half, center_y + nucleus_half),
+            (center_x - nucleus_half, center_y - nucleus_half),
+        ]
+        nucleus_data[f"n{idx}"] = Polygon(nucleus_coords)
+    
+    # Create GeoDataFrame for nucleus_boundaries
+    nucleus_gdf = gpd.GeoDataFrame(
+        {"geometry": list(nucleus_data.values())}, 
+        index=list(nucleus_data.keys())
+    )
+    nucleus_shapes = ShapesModel.parse(nucleus_gdf)
+
     # Create SpatialData with shapes and points
     data = sd.SpatialData(
         points={"transcripts": points},
-        shapes={"cell_boundaries": shapes}
+        shapes={"cell_boundaries": shapes, "nucleus_boundaries": nucleus_shapes}
     )
 
     # Prepare the data (creates table)
@@ -145,7 +150,7 @@ def _create_unified_synthetic_dataset(n_shapes, n_genes, points_per_gene, includ
         points_key="transcripts",
         feature_key="feature_name",
         instance_key="cell_boundaries",
-        shape_keys=["cell_boundaries"],
+        shape_keys=["cell_boundaries", "nucleus_boundaries"],
     )
 
     # Add images and labels if requested

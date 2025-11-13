@@ -4,15 +4,15 @@ import bento as bt
 
 
 @pytest.fixture(scope="module")
-def colocation_data(small_data):
-    bt.tl.coloc_quotient(small_data, shapes=["cell_boundaries"])
-    bt.tl.colocation(small_data, ranks=range(1, 3 + 1), plot_error=False)
+def colocation_data(synthetic_data):
+    bt.tl.coloc_quotient(synthetic_data, shapes=["cell_boundaries"])
+    bt.tl.colocation(synthetic_data, ranks=range(1, 3 + 1), plot_error=False)
 
-    return small_data
+    return synthetic_data
 
 
 def test_coloc_quotient(colocation_data):
-    # Check that clq is in small_data.tables["table"].uns
+    # Check that clq is in colocation_data.tables["table"].uns
     assert "clq" in colocation_data.tables["table"].uns
 
     # Check that cell_boundaries is in colocation_data.tables["table"].uns["clq"]
