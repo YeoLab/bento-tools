@@ -20,23 +20,43 @@ def flux_data(synthetic_data):
 
 
 def test_flux(flux_data):
-    # Check that cell_boundaries_raster is in flux_data.points
-    assert "cell_boundaries_raster" in flux_data.points
-
+    # Check that cell_boundaries_flux image is in flux_data.images
+    assert "cell_boundaries_flux" in flux_data.images
+    
+    flux_image = flux_data.images["cell_boundaries_flux"]
+    
     # Check that flux_genes is in flux_data.tables["table"].uns
     assert "flux_genes" in flux_data.tables["table"].uns
     genes = flux_data.tables["table"].uns["flux_genes"]
 
     # Check that flux_variance_ratio is in flux_data.tables["table"].uns
     assert "flux_variance_ratio" in flux_data.tables["table"].uns
-
-    # Check columns are added in cell_boundaries_raster
-    assert all(
-        gene in flux_data.points["cell_boundaries_raster"].columns for gene in genes
-    )
-
-    for i in range(len(genes)):
-        assert f"flux_embed_{i}" in flux_data.points["cell_boundaries_raster"].columns
+    
+    # Check that flux_image_key is in flux_data.tables["table"].uns
+    assert "flux_image_key" in flux_data.tables["table"].uns
+    assert flux_data.tables["table"].uns["flux_image_key"] == "cell_boundaries_flux"
+    
+    # Check that flux_channel_names is in flux_data.tables["table"].uns
+    assert "flux_channel_names" in flux_data.tables["table"].uns
+    channel_names = flux_data.tables["table"].uns["flux_channel_names"]
+    
+    # Check that image has correct dimensions (c, y, x)
+    assert flux_image.dims == ('c', 'y', 'x')
+    
+    # Check that gene channels are in the image
+    assert all(gene in channel_names for gene in genes)
+    
+    # Check that embedding channels are in the image
+    n_genes = len(genes)
+    n_components = min(n_genes, 10)
+    for i in range(n_components):
+        assert f"flux_embed_{i}" in channel_names
+    
+    # Check that color and count channels are in the image
+    assert "flux_color_r" in channel_names
+    assert "flux_color_g" in channel_names
+    assert "flux_color_b" in channel_names
+    assert "flux_counts" in channel_names
 
 
 def test_fluxmap(flux_data):
