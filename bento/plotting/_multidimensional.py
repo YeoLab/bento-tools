@@ -417,7 +417,6 @@ def _radviz(
             legend=legend,
             ax=ax,
         )
-        scatter = ax.collections[0]
 
         if legend:
             plt.legend(bbox_to_anchor=[1.1, 1], fontsize=10, frameon=False)
@@ -481,7 +480,10 @@ def _radviz(
                 adjust_text(
                     texts,
                     # expand=(2, 2),
-                    objects=[scatter],
+                    # Points to avoid as coordinates: objects=[scatter] gives
+                    # adjustText NaN extents, which scipy >= 1.11 rejects.
+                    x=xy_filt[0].values,
+                    y=xy_filt[1].values,
                     ax=ax,
                     # arrowstyle="-",
                     # color=edgecolor,
