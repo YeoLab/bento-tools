@@ -106,7 +106,11 @@ def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
 
     label_orders = np.array(label_orders)
 
-    s = sparse.COO(label_orders, data=clq_long["log_clq"].values)
+    s = sparse.COO(
+        label_orders,
+        data=clq_long["log_clq"].values,
+        shape=tuple(len(labels[name]) for name in label_names),
+    )
     tensor = s.todense()
 
     sdata.tables["table"].uns["tensor"] = tensor

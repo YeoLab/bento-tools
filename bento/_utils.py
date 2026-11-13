@@ -6,7 +6,9 @@ import numpy as np
 import pandas as pd
 import dask
 
-dask.config.set({"dataframe.query-planning": False})
+# dask 2025.1 removed the legacy DataFrame; setting this there raises on import.
+if int(dask.__version__.split(".")[0]) < 2025:
+    dask.config.set({"dataframe.query-planning": False})
 import dask.dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
@@ -52,7 +54,7 @@ def filter_by_gene(
     points = PointsModel.parse(
         dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"}
     )
-    points.attrs = transform
+    points.attrs.update(transform)
     sdata.points[points_key] = points
 
     try:
@@ -285,7 +287,7 @@ def set_points_metadata(
     points = PointsModel.parse(
         dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"}
     )
-    points.attrs = transform
+    points.attrs.update(transform)
     sdata.points[points_key] = points
 
     # sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
@@ -380,7 +382,7 @@ def _sync_points(sdata: SpatialData, points_key: str) -> None:
         dd.from_pandas(points_valid, npartitions=1),
         coordinates={"x": "x", "y": "y"},
     )
-    points_valid.attrs = transform
+    points_valid.attrs.update(transform)
     sdata.points[points_key] = points_valid
 
 

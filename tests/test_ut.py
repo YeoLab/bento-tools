@@ -23,7 +23,7 @@ def test_get_points(small_data):
         sdata=small_data, points_key="transcripts", astype="dask", sync=True
     )
 
-    assert type(dd_sync) == dd.core.DataFrame
+    assert type(dd_sync) == dd.DataFrame
 
 
 def test_get_shape(small_data):
@@ -148,11 +148,11 @@ def test_get_points_metadata(small_data):
     assert type(pd_metadata_single) == pd.DataFrame
     assert column_names[0] in pd_metadata_single
 
-    assert type(dd_metadata_single) == dd.core.DataFrame
+    assert type(dd_metadata_single) == dd.DataFrame
     assert column_names[0] in dd_metadata_single
 
     assert type(pd_metadata) == pd.DataFrame
-    assert type(dd_metadata) == dd.core.DataFrame
+    assert type(dd_metadata) == dd.DataFrame
     assert "list_metadata" in pd_metadata_single
     assert "list_metadata" in dd_metadata_single
     assert all(column in pd_metadata for column in column_names)
