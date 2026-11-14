@@ -587,7 +587,7 @@ def fluxmap(
     old_cols = sdata.points[points_key].columns[
         sdata.points[points_key].columns.str.startswith("fluxmap")
     ]
-    sdata.points[points_key] = sdata.points[points_key].drop(old_cols, axis=1)
+    sdata.points[points_key] = sdata.points[points_key].drop(columns=list(old_cols))
 
     _sjoin_points(sdata=sdata, shape_keys=fluxmap_names, points_key=points_key)
     _sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names, instance_map_type="1to1")

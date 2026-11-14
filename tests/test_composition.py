@@ -21,3 +21,25 @@ def test_comp(small_data):
         shape_name in small_data.tables["table"].uns["comp_stats"]
         for shape_name in shape_names
     )
+
+
+def test_comp_plot_annotate():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    sdata = bt.ds.sample_data()
+    bt.geo.overlay(
+        sdata,
+        s1="cell_boundaries",
+        s2="nucleus_boundaries",
+        name="cytoplasm",
+        how="difference",
+    )
+    bt.tl.comp(
+        sdata=sdata,
+        points_key="transcripts",
+        shape_names=["cytoplasm", "nucleus_boundaries"],
+    )
+
+    # annotate with adjust=True (the default) runs adjustText over the points
+    bt.pl.comp(sdata, annotate=10)

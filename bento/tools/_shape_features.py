@@ -412,10 +412,10 @@ def raster(
         raster_all, coordinates={"x": "x", "y": "y"}
     )
 
-    transform = copy.deepcopy(sdata.points[points_key].attrs)
+    transform = copy.deepcopy(dict(sdata.points[points_key].attrs))
     if "feature_key" in transform["spatialdata_attrs"]:
         del transform["spatialdata_attrs"]["feature_key"]
-    sdata.points[shape_feature_key].attrs = transform
+    sdata.points[shape_feature_key].attrs.update(transform)
 
 
 def perimeter(sdata: SpatialData, shape_key: str, recompute: bool = False) -> None:
