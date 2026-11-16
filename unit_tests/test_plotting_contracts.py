@@ -1,6 +1,5 @@
 """Plot artists encode the requested coordinates, labels, and loadings."""
 
-from copy import deepcopy
 from pathlib import Path
 
 import matplotlib
@@ -16,8 +15,9 @@ import spatialdata as sd
 import bento as bt
 
 
-@pytest.fixture(scope="module")
-def prepared_plot_data():
+@pytest.fixture
+def plot_data():
+    # Prepare a fresh object because copying Dask-backed points can lose their metadata.
     path = Path(bt.__file__).parent / "datasets" / "six_cell_data.zarr"
     data = sd.read_zarr(path)
     return bt.io.prep(
@@ -27,11 +27,6 @@ def prepared_plot_data():
         instance_key="cell_boundaries",
         shape_keys=["cell_boundaries", "nucleus_boundaries"],
     )
-
-
-@pytest.fixture
-def plot_data(prepared_plot_data):
-    return deepcopy(prepared_plot_data)
 
 
 @pytest.fixture(autouse=True)
